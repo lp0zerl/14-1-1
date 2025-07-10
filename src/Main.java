@@ -1,3 +1,4 @@
+
 public class Main {
     public static void main(String[] args) {
         Product apple = new SimpleProduct("Apple", 100);
@@ -6,29 +7,57 @@ public class Main {
         Product milk = new DiscountedProduct("Milk", 150, 10);
         Product tea = new FixPriceProduct("Tea");
 
-        ProductBasket basket = new ProductBasket();
+        Article article1 = new Article("Как выбрать яблоки", "Яблоки бывают разные. Важно обращать внимание на цвет и запах.");
+        Article article2 = new Article("Почему бананы полезны", "Бананы богаты калием и быстро утоляют голод.");
+        Article article3 = new Article("Шоколад и настроение", "Шоколад помогает выработке эндорфинов.");
+        Article article4 = new Article("Молоко: польза или вред?", "Молоко содержит кальций, но не все его переносят.");
 
-        basket.addProduct(apple);
-        basket.addProduct(banana);
-        basket.addProduct(chocolate);
-        basket.addProduct(milk);
-        basket.addProduct(tea);
+        SearchEngine engine = new SearchEngine(20);
 
-        Product extra = new SimpleProduct("Extra", 99);
-        basket.addProduct(extra);
+        engine.add(apple);
+        engine.add(banana);
+        engine.add(chocolate);
+        engine.add(milk);
+        engine.add(tea);
 
-        basket.printBasket();
+        engine.add(article1);
+        engine.add(article2);
+        engine.add(article3);
+        engine.add(article4);
 
-        System.out.println("Общая стоимость: " + basket.getTotalPrice());
-        System.out.println("Есть ли Milk? " + basket.hasProduct("Milk"));
-        System.out.println("Есть ли Coffee? " + basket.hasProduct("Coffee"));
+        System.out.println("Поиск по слову 'шоко':");
+        printResults(engine.search("шоко"));
 
-        basket.clear();
-        basket.printBasket();
+        System.out.println("\nПоиск по слову 'яблок':");
+        printResults(engine.search("яблок"));
+
+        System.out.println("\nПоиск по слову 'Tea':");
+        printResults(engine.search("Tea"));
+
+        System.out.println("\nПоиск по слову 'молоко':");
+        printResults(engine.search("молоко"));
+    }
+
+    private static void printResults(Searchable[] results) {
+        for (Searchable item : results) {
+            if (item != null) {
+                System.out.println(item.getStringRepresentation());
+            }
+        }
     }
 }
 
-abstract class Product {
+interface Searchable {
+    String getSearchTerm();
+    String getType();
+    String getName();
+
+    default String getStringRepresentation() {
+        return getName() + " — " + getType();
+    }
+}
+
+abstract class Product implements Searchable {
     private final String name;
 
     public Product(String name) {
@@ -43,7 +72,19 @@ abstract class Product {
     }
 
     @Override
-    public abstract String toString();
+    public String getSearchTerm() {
+        return name;
+    }
+
+    @Override
+    public String getType() {
+        return "PRODUCT";
+    }
+
+    @Override
+    public String toString() {
+        return name + ": " + getPrice();
+    }
 }
 
 class SimpleProduct extends Product {
@@ -62,11 +103,6 @@ class SimpleProduct extends Product {
     @Override
     public boolean isSpecial() {
         return false;
-    }
-
-    @Override
-    public String toString() {
-        return getName() + ": " + getPrice();
     }
 }
 
@@ -119,61 +155,59 @@ class FixPriceProduct extends Product {
     }
 }
 
-class ProductBasket {
-    private final Product[] products = new Product[5];
+class Article implements Searchable {
+    private final String title;
+    private final String text;
+
+    public Article(String title, String text) {
+        this.title = title;
+        this.text = text;
+    }
+
+    @Override
+    public String getSearchTerm() {
+        return title + " " + text;
+    }
+
+    @Override
+    public String getType() {
+        return "ARTICLE";
+    }
+
+    @Override
+    public String getName() {
+        return title;
+    }
+
+    @Override
+    public String toString() {
+        return title + "\n" + text;
+    }
+}
+
+class SearchEngine {
+    private final Searchable[] elements;
     private int size = 0;
 
-    public void addProduct(Product product) {
-        if (size >= products.length) {
-            System.out.println("Невозможно добавить продукт");
-            return;
-        }
-        products[size++] = product;
+    public SearchEngine(int capacity) {
+        this.elements = new Searchable[capacity];
     }
 
-    public int getTotalPrice() {
-        int sum = 0;
-        for (Product product : products) {
-            if (product != null) {
-                sum += product.getPrice();
+    public void add(Searchable searchable) {
+        if (size < elements.length) {
+            elements[size++] = searchable;
+        }
+    }
+
+    public Searchable[] search(String keyword) {
+        Searchable[] results = new Searchable[5];
+        int found = 0;
+        for (int i = 0; i < size; i++) {
+            if (elements[i].getSearchTerm().toLowerCase().contains(keyword.toLowerCase())) {
+                results[found++] = elements[i];
+                if (found == 5) break;
             }
         }
-        return sum;
-    }
-
-    public void printBasket() {
-        if (size == 0) {
-            System.out.println("В корзине пусто");
-            return;
-        }
-
-        int specialCount = 0;
-        for (Product product : products) {
-            if (product != null) {
-                System.out.println(product.toString());
-                if (product.isSpecial()) {
-                    specialCount++;
-                }
-            }
-        }
-
-        System.out.println("Итого: " + getTotalPrice());
-        System.out.println("Специальных товаров: " + specialCount);
-    }
-
-    public boolean hasProduct(String name) {
-        for (Product product : products) {
-            if (product != null && product.getName().equalsIgnoreCase(name)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public void clear() {
-        for (int i = 0; i < products.length; i++) {
-            products[i] = null;
-        }
-        size = 0;
+        return results;
     }
 }
