@@ -1,5 +1,10 @@
-import org.skypro.skyshop.product.Product;
+import article.Article;
+import product.DiscountedProduct;
+import product.FixPriceProduct;
+import product.Product;
 import product.SimpleProduct;
+import search.SearchEngine;
+import search.Searchable;
 
 public class Main {
     public static void main(String[] args) {
@@ -49,5 +54,3 @@ public class Main {
     }
 }
 
-
-}

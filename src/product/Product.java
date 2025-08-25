@@ -1,6 +1,8 @@
-package org.skypro.skyshop.product;
+package product;
 
-abstract class Product implements Searchable {
+import search.Searchable;
+
+public abstract class Product implements Searchable {
     private final String name;
 
     public Product(String name) {

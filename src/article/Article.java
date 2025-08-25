@@ -1,6 +1,8 @@
 package article;
 
-class Article implements Searchable {
+import search.Searchable;
+
+public class Article implements Searchable {
     private final String title;
     private final String text;
 

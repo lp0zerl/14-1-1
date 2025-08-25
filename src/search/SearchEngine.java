@@ -1,6 +1,6 @@
 package search;
 
-class SearchEngine {
+public class SearchEngine {
     private final Searchable[] elements;
     private int size = 0;
 

@@ -1,6 +1,6 @@
 package search;
 
-interface Searchable {
+public interface Searchable {
     String getSearchTerm();
     String getType();
     String getName();
@@ -9,4 +9,3 @@ interface Searchable {
         return getName() + " — " + getType();
     }
 }
-
