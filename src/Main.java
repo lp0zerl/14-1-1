@@ -37,7 +37,6 @@ class Product implements Searchable {
         return name + " (" + price + " руб.)";
     }
 
-    // Реализация equals и hashCode только по имени
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -82,7 +81,6 @@ class Article implements Searchable {
         return "Статья: " + name;
     }
 
-    // Реализация equals и hashCode только по имени
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -105,44 +103,107 @@ class Article implements Searchable {
 // import articles.Article;
 
 import java.util.*;
+        import java.util.stream.Collectors;
 
 class SearchEngine {
-    // ЗАМЕНА: List на Set для предотвращения дубликатов
     private Set<Searchable> searchableItems;
 
     public SearchEngine() {
-        this.searchableItems = new HashSet<>(); // HashSet для уникальности
+        this.searchableItems = new HashSet<>();
     }
 
     public void addProduct(Product product) {
-        searchableItems.add(product); // Set автоматически предотвратит дубликаты
+        searchableItems.add(product);
     }
 
     public void addArticle(Article article) {
-        searchableItems.add(article); // Set автоматически предотвратит дубликаты
+        searchableItems.add(article);
     }
 
-    // ЗАМЕНА: возвращаем отсортированный Set вместо Map
+    // ПЕРЕПИСАНО: использование Stream API вместо циклов
     public Set<Searchable> search(String query) {
+        String lowerQuery = query.toLowerCase();
+
         // Компаратор для сортировки: сначала по длине имени (убывание), затем по алфавиту
         Comparator<Searchable> comparator = (item1, item2) -> {
             int lengthCompare = Integer.compare(item2.getName().length(), item1.getName().length());
             if (lengthCompare != 0) {
-                return lengthCompare; // Сначала сортируем по убыванию длины
+                return lengthCompare;
             }
-            return item1.getName().compareTo(item2.getName()); // При равной длине - по алфавиту
+            return item1.getName().compareTo(item2.getName());
         };
 
-        Set<Searchable> results = new TreeSet<>(comparator);
-        String lowerQuery = query.toLowerCase();
+        // Использование Stream API: filter и collect с TreeSet
+        return searchableItems.stream()
+                .filter(item -> item.getName().toLowerCase().contains(lowerQuery))
+                .collect(Collectors.toCollection(() -> new TreeSet<>(comparator)));
+    }
+}
 
-        for (Searchable item : searchableItems) {
-            if (item.getName().toLowerCase().contains(lowerQuery)) {
-                results.add(item);
-            }
+// ==================== ПАКЕТ products ====================
+// === ОТДЕЛЬНЫЙ ФАЙЛ: ProductBasket.java ===
+// package products;
+
+import java.util.*;
+        import java.util.stream.Collectors;
+
+class ProductBasket {
+    private Map<String, List<Product>> productsMap;
+
+    public ProductBasket() {
+        this.productsMap = new HashMap<>();
+    }
+
+    public void addProduct(Product product) {
+        String productName = product.getName();
+        productsMap.putIfAbsent(productName, new ArrayList<>());
+        productsMap.get(productName).add(product);
+    }
+
+    public List<Product> removeProductsByName(String name) {
+        List<Product> removedProducts = productsMap.remove(name);
+        return removedProducts != null ? removedProducts : new ArrayList<>();
+    }
+
+    // ПЕРЕПИСАНО: использование Stream API для вычисления общей стоимости
+    public double getTotalPrice() {
+        return productsMap.values().stream()
+                .flatMap(List::stream) // Преобразование Stream<List<Product>> в Stream<Product>
+                .mapToDouble(Product::getPrice) // Преобразование в DoubleStream
+                .sum(); // Суммирование всех цен
+    }
+
+    // ПЕРЕПИСАНО: использование Stream API для вывода корзины
+    public void printBasket() {
+        if (productsMap.isEmpty()) {
+            System.out.println("Корзина пуста");
+            return;
         }
 
-        return results;
+        System.out.println("Содержимое корзины:");
+        // Использование flatMap для преобразования вложенных списков в единый Stream
+        productsMap.values().stream()
+                .flatMap(List::stream)
+                .forEach(product -> System.out.println("- " + product));
+
+        // Дополнительная информация с использованием Stream API
+        long totalItems = productsMap.values().stream()
+                .flatMap(List::stream)
+                .count();
+
+        long specialItemsCount = getSpecialCount();
+
+        System.out.println("Общее количество товаров: " + totalItems);
+        System.out.println("Специальных товаров: " + specialItemsCount);
+        System.out.println("Общая стоимость: " + getTotalPrice() + " руб.");
+    }
+
+    // ПЕРЕПИСАНО: приватный метод для подсчета специальных товаров с использованием Stream API
+    private long getSpecialCount() {
+        return productsMap.values().stream()
+                .flatMap(List::stream)
+                .filter(product -> product.getPrice() > 1000) // Товары дороже 1000 рублей считаем специальными
+                .count();
     }
 }
 
@@ -151,6 +212,7 @@ class SearchEngine {
 // package main;
 
 // import products.Product;
+// import products.ProductBasket;
 // import articles.Article;
 // import search.SearchEngine;
 // import search.Searchable;
@@ -159,92 +221,75 @@ import java.util.*;
 
 public class Main {
     public static void main(String[] args) {
-        demonstrateNoDuplicates();
-        demonstrateSearchWithComparator();
+        demonstrateStreamAPI();
     }
 
-    private static void demonstrateNoDuplicates() {
-        System.out.println("=== ДЕМОНСТРАЦИЯ ОТСУТСТВИЯ ДУБЛИКАТОВ ===");
+    private static void demonstrateStreamAPI() {
+        System.out.println("=== ДЕМОНСТРАЦИЯ STREAM API ===");
 
+        // Демонстрация ProductBasket с Stream API
+        System.out.println("\n--- ProductBasket с Stream API ---");
+        ProductBasket basket = new ProductBasket();
+
+        // Добавляем товары
+        basket.addProduct(new Product("Смартфон", 25000.0));
+        basket.addProduct(new Product("Ноутбук", 75000.0));
+        basket.addProduct(new Product("Наушники", 5000.0));
+        basket.addProduct(new Product("Чехол для телефона", 800.0));
+        basket.addProduct(new Product("Смартфон", 30000.0)); // Другой смартфон
+        basket.addProduct(new Product("Планшет", 45000.0));
+
+        basket.printBasket();
+
+        // Демонстрация удаления
+        System.out.println("\n--- Удаление смартфонов ---");
+        List<Product> removed = basket.removeProductsByName("Смартфон");
+        System.out.println("Удалено товаров: " + removed.size());
+        removed.forEach(product -> System.out.println("- " + product));
+
+        System.out.println("\n--- Корзина после удаления ---");
+        basket.printBasket();
+
+        // Демонстрация SearchEngine с Stream API
+        System.out.println("\n--- SearchEngine с Stream API ---");
         SearchEngine searchEngine = new SearchEngine();
 
-        // Пытаемся добавить продукты с одинаковыми именами
-        searchEngine.addProduct(new Product("Смартфон", 15000.0));
-        searchEngine.addProduct(new Product("Смартфон", 16000.0)); // Дубликат - не добавится
-        searchEngine.addProduct(new Product("Ноутбук", 50000.0));
-        searchEngine.addProduct(new Product("Ноутбук", 55000.0)); // Дубликат - не добавится
+        // Добавляем продукты и статьи
+        searchEngine.addProduct(new Product("Смартфон Apple iPhone", 80000.0));
+        searchEngine.addProduct(new Product("Смартфон Samsung Galaxy", 50000.0));
+        searchEngine.addProduct(new Product("Ноутбук игровой", 120000.0));
+        searchEngine.addProduct(new Product("Планшет графический", 45000.0));
+        searchEngine.addProduct(new Product("Наушники беспроводные", 15000.0));
 
-        // Пытаемся добавить статьи с одинаковыми именами
-        searchEngine.addArticle(new Article("Обзор смартфона", "Содержание обзора..."));
-        searchEngine.addArticle(new Article("Обзор смартфона", "Другое содержание...")); // Дубликат - не добавится
+        searchEngine.addArticle(new Article("Обзор нового смартфона", "Содержание обзора..."));
+        searchEngine.addArticle(new Article("Сравнение игровых ноутбуков", "Содержание сравнения..."));
+        searchEngine.addArticle(new Article("Лучшие планшеты для рисования", "Содержание статьи..."));
 
-        // Поиск покажет только уникальные элементы
-        System.out.println("\n--- Результаты поиска 'смартфон' ---");
-        Set<Searchable> results = searchEngine.search("смартфон");
-        System.out.println("Найдено уникальных элементов: " + results.size());
-        for (Searchable item : results) {
-            System.out.println("- " + item);
-        }
-    }
+        // Поиск с использованием Stream API
+        System.out.println("\n--- Поиск 'смартфон' ---");
+        Set<Searchable> smartphoneResults = searchEngine.search("смартфон");
+        System.out.println("Найдено: " + smartphoneResults.size());
+        smartphoneResults.forEach(System.out::println);
 
-    private static void demonstrateSearchWithComparator() {
-        System.out.println("\n\n=== ДЕМОНСТРАЦИЯ РАБОТЫ КОМПАРАТОРА ===");
+        System.out.println("\n--- Поиск 'ноутбук' ---");
+        Set<Searchable> laptopResults = searchEngine.search("ноутбук");
+        System.out.println("Найдено: " + laptopResults.size());
+        laptopResults.forEach(System.out::println);
 
-        SearchEngine searchEngine = new SearchEngine();
+        System.out.println("\n--- Поиск 'новый' ---");
+        Set<Searchable> newResults = searchEngine.search("новый");
+        System.out.println("Найдено: " + newResults.size());
+        newResults.forEach(System.out::println);
 
-        // Добавляем элементы с разной длиной имен для демонстрации сортировки
-        searchEngine.addProduct(new Product("Смартфон новый флагман", 80000.0)); // Длинное имя
-        searchEngine.addProduct(new Product("Телевизор", 45000.0)); // Короткое имя
-        searchEngine.addProduct(new Product("Ноутбук игровой мощный", 120000.0)); // Длинное имя
-        searchEngine.addProduct(new Product("Планшет", 25000.0)); // Короткое имя
-        searchEngine.addProduct(new Product("Наушники беспроводные", 8000.0)); // Средняя длина
-        searchEngine.addProduct(new Product("Часы умные", 15000.0)); // Средняя длина
+        // Демонстрация пустого поиска
+        System.out.println("\n--- Поиск 'несуществующий' ---");
+        Set<Searchable> emptyResults = searchEngine.search("несуществующий");
+        System.out.println("Найдено: " + emptyResults.size());
 
-        // Статьи с разной длиной названий
-        searchEngine.addArticle(new Article("Обзор нового флагманского смартфона", "Содержание..."));
-        searchEngine.addArticle(new Article("Сравнение телевизоров", "Содержание..."));
-        searchEngine.addArticle(new Article("Лучшие игровые ноутбуки 2024 года", "Содержание..."));
-
-        System.out.println("\n--- Результаты поиска (все элементы) ---");
+        // Демонстрация всех элементов
+        System.out.println("\n--- Все элементы ---");
         Set<Searchable> allResults = searchEngine.search("");
         System.out.println("Всего элементов: " + allResults.size());
-        for (Searchable item : allResults) {
-            System.out.println("- " + item + " (длина имени: " + item.getName().length() + ")");
-        }
-
-        System.out.println("\n--- Результаты поиска 'новый' ---");
-        Set<Searchable> newResults = searchEngine.search("новый");
-        for (Searchable item : newResults) {
-            System.out.println("- " + item);
-        }
-
-        // Демонстрация сортировки при равной длине имен
-        System.out.println("\n--- Демонстрация сортировки при равной длине ---");
-        SearchEngine equalLengthDemo = new SearchEngine();
-        equalLengthDemo.addProduct(new Product("Банан", 100.0));
-        equalLengthDemo.addProduct(new Product("Ананас", 200.0));
-        equalLengthDemo.addProduct(new Product("Яблоко", 150.0));
-        equalLengthDemo.addProduct(new Product("Манго", 300.0));
-
-        Set<Searchable> equalLengthResults = equalLengthDemo.search("");
-        System.out.println("Товары с одинаковой длиной имени (5 символов):");
-        for (Searchable item : equalLengthResults) {
-            System.out.println("- " + item + " (длина: " + item.getName().length() + ")");
-        }
-
-        // Демонстрация смешанной сортировки
-        System.out.println("\n--- Смешанная демонстрация сортировки ---");
-        SearchEngine mixedDemo = new SearchEngine();
-        mixedDemo.addProduct(new Product("А", 100.0));          // 1 символ
-        mixedDemo.addProduct(new Product("Яблоко", 150.0));     // 6 символов
-        mixedDemo.addProduct(new Product("Банан", 100.0));      // 5 символов
-        mixedDemo.addProduct(new Product("Арбуз большой", 200.0)); // 13 символов
-        mixedDemo.addProduct(new Product("Груша", 120.0));      // 5 символов
-        mixedDemo.addProduct(new Product("Ананас", 200.0));     // 6 символов
-
-        Set<Searchable> mixedResults = mixedDemo.search("");
-        for (Searchable item : mixedResults) {
-            System.out.println("- " + item + " (длина: " + item.getName().length() + ")");
-        }
+        allResults.forEach(item -> System.out.println("- " + item + " (длина: " + item.getName().length() + ")"));
     }
 }
