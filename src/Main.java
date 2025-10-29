@@ -1,4 +1,3 @@
-import java.util.*;
 
 public class Main {
     public static void main(String[] args) {
@@ -101,18 +100,6 @@ abstract class Product implements Searchable {
     }
 }
 
-// === Простые продукты ===
-class SimpleProduct extends Product {
-    private final int price;
-
-    public SimpleProduct(String name, int price) {
-        super(name);
-        if (price <= 0) {
-            throw new IllegalArgumentException("Цена продукта должна быть строго больше 0.");
-        }
-        this.price = price;
-    }
-
     public int getPrice() {
         return price;
     }
@@ -153,38 +140,6 @@ class DiscountedProduct extends Product {
     }
 }
 
-// === Фиксированная цена ===
-class FixPriceProduct extends Product {
-    private static final int FIXED_PRICE = 300;
-
-    public FixPriceProduct(String name) {
-        super(name);
-    }
-
-    public int getPrice() {
-        return FIXED_PRICE;
-    }
-
-    public boolean isSpecial() {
-        return true;
-    }
-
-    @Override
-    public String toString() {
-        return getName() + ": Фиксированная цена " + FIXED_PRICE;
-    }
-}
-
-// === Статьи ===
-class Article implements Searchable {
-    private final String title;
-    private final String text;
-
-    public Article(String title, String text) {
-        this.title = title;
-        this.text = text;
-    }
-
     public String getSearchTerm() {
         return title + " " + text;
     }
@@ -201,29 +156,6 @@ class Article implements Searchable {
         return title + "\n" + text;
     }
 }
-
-// === Исключение BestResultNotFound ===
-class BestResultNotFound extends Exception {
-    public BestResultNotFound(String searchTerm) {
-        super("Не найден подходящий результат для запроса: \"" + searchTerm + "\"");
-    }
-}
-
-// === Поисковая система ===
-class SearchEngine {
-    private final Searchable[] elements;
-    private int size = 0;
-
-    public SearchEngine(int capacity) {
-        elements = new Searchable[capacity];
-    }
-
-    public void add(Searchable s) {
-        if (size < elements.length) {
-            elements[size++] = s;
-        }
-    }
-
     public Searchable[] search(String keyword) {
         Searchable[] results = new Searchable[5];
         int count = 0;
