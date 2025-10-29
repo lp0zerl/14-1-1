@@ -7,6 +7,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.context.annotation.Scope;
 import org.springframework.context.annotation.ScopedProxyMode;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ControllerAdvice;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.util.*;
@@ -17,6 +21,45 @@ import java.util.stream.Collectors;
 public class SkyshopApplication {
     public static void main(String[] args) {
         SpringApplication.run(SkyshopApplication.class, args);
+    }
+}
+
+// ==================== ИСКЛЮЧЕНИЯ И ОБРАБОТКА ОШИБОК ====================
+
+// Собственное исключение для ненайденного продукта
+class NoSuchProductException extends RuntimeException {
+    public NoSuchProductException(String message) {
+        super(message);
+    }
+}
+
+// Модель ошибки для возврата в JSON
+class ShopError {
+    private final String code;
+    private final String message;
+
+    public ShopError(String code, String message) {
+        this.code = code;
+        this.message = message;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+}
+
+// Обработчик исключений
+@ControllerAdvice
+class ShopControllerAdvice {
+
+    @ExceptionHandler(NoSuchProductException.class)
+    public ResponseEntity<ShopError> handleNoSuchProductException(NoSuchProductException ex) {
+        ShopError error = new ShopError("PRODUCT_NOT_FOUND", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
     }
 }
 
@@ -232,9 +275,13 @@ class StorageService {
 
     private void initializeTestData() {
         // Добавляем тестовые продукты
-        products.put(UUID.randomUUID(), new Product(UUID.randomUUID(), "Смартфон Samsung Galaxy", 50000.0));
-        products.put(UUID.randomUUID(), new Product(UUID.randomUUID(), "Ноутбук игровой ASUS", 120000.0));
-        products.put(UUID.randomUUID(), new Product(UUID.randomUUID(), "Наушники беспроводные Sony", 15000.0));
+        UUID smartphoneId = UUID.randomUUID();
+        UUID laptopId = UUID.randomUUID();
+        UUID headphonesId = UUID.randomUUID();
+
+        products.put(smartphoneId, new Product(smartphoneId, "Смартфон Samsung Galaxy", 50000.0));
+        products.put(laptopId, new Product(laptopId, "Ноутбук игровой ASUS", 120000.0));
+        products.put(headphonesId, new Product(headphonesId, "Наушники беспроводные Sony", 15000.0));
         products.put(UUID.randomUUID(), new Product(UUID.randomUUID(), "Планшет Apple iPad", 45000.0));
         products.put(UUID.randomUUID(), new Product(UUID.randomUUID(), "Смартфон Apple iPhone", 80000.0));
         products.put(UUID.randomUUID(), new Product(UUID.randomUUID(), "Телевизор LG OLED", 150000.0));
@@ -311,11 +358,11 @@ class BasketService {
         this.storageService = storageService;
     }
 
-    // Метод добавления товара в корзину по ID
+    // Метод добавления товара в корзину по ID - теперь выбрасывает NoSuchProductException
     public void addProductToBasket(UUID productId) {
         Optional<Product> product = storageService.getProductById(productId);
         if (product.isEmpty()) {
-            throw new IllegalArgumentException("Продукт с ID " + productId + " не найден");
+            throw new NoSuchProductException("Продукт с ID '" + productId + "' не найден в каталоге");
         }
         productBasket.addProduct(productId);
     }
@@ -330,7 +377,7 @@ class BasketService {
                     UUID productId = entry.getKey();
                     Integer quantity = entry.getValue();
                     Product product = storageService.getProductById(productId)
-                            .orElseThrow(() -> new IllegalArgumentException("Продукт не найден"));
+                            .orElseThrow(() -> new NoSuchProductException("Продукт с ID '" + productId + "' не найден в каталоге"));
                     return new BasketItem(product, quantity);
                 })
                 .collect(Collectors.toList());
