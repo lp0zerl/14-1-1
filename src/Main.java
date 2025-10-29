@@ -46,14 +46,6 @@ abstract class Product {
     public abstract String toString();
 }
 
-class SimpleProduct extends Product {
-    private final int price;
-
-    public SimpleProduct(String name, int price) {
-        super(name);
-        this.price = price;
-    }
-
     @Override
     public int getPrice() {
         return price;
@@ -70,15 +62,6 @@ class SimpleProduct extends Product {
     }
 }
 
-class DiscountedProduct extends Product {
-    private final int basePrice;
-    private final int discountPercent;
-
-    public DiscountedProduct(String name, int basePrice, int discountPercent) {
-        super(name);
-        this.basePrice = basePrice;
-        this.discountPercent = discountPercent;
-    }
 
     @Override
     public int getPrice() {
@@ -95,42 +78,6 @@ class DiscountedProduct extends Product {
         return getName() + ": " + getPrice() + " (" + discountPercent + "%)";
     }
 }
-
-class FixPriceProduct extends Product {
-    private static final int FIXED_PRICE = 300;
-
-    public FixPriceProduct(String name) {
-        super(name);
-    }
-
-    @Override
-    public int getPrice() {
-        return FIXED_PRICE;
-    }
-
-    @Override
-    public boolean isSpecial() {
-        return true;
-    }
-
-    @Override
-    public String toString() {
-        return getName() + ": Фиксированная цена " + FIXED_PRICE;
-    }
-}
-
-class ProductBasket {
-    private final Product[] products = new Product[5];
-    private int size = 0;
-
-    public void addProduct(Product product) {
-        if (size >= products.length) {
-            System.out.println("Невозможно добавить продукт");
-            return;
-        }
-        products[size++] = product;
-    }
-
     public int getTotalPrice() {
         int sum = 0;
         for (Product product : products) {
