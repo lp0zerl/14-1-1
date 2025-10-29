@@ -5,6 +5,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.context.annotation.Scope;
+import org.springframework.context.annotation.ScopedProxyMode;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.util.*;
@@ -146,6 +148,74 @@ class SearchResult {
     }
 }
 
+// ==================== КОРЗИНА ====================
+
+// Класс BasketItem
+class BasketItem {
+    private final Product product;
+    private final int quantity;
+
+    public BasketItem(Product product, int quantity) {
+        this.product = product;
+        this.quantity = quantity;
+    }
+
+    public Product getProduct() {
+        return product;
+    }
+
+    public int getQuantity() {
+        return quantity;
+    }
+
+    public double getTotalPrice() {
+        return product.getPrice() * quantity;
+    }
+}
+
+// Класс UserBasket
+class UserBasket {
+    private final List<BasketItem> items;
+    private final double total;
+
+    public UserBasket(List<BasketItem> items) {
+        this.items = Collections.unmodifiableList(new ArrayList<>(items));
+        // Подсчет общей стоимости с помощью StreamAPI
+        this.total = items.stream()
+                .mapToDouble(BasketItem::getTotalPrice)
+                .sum();
+    }
+
+    public List<BasketItem> getItems() {
+        return items;
+    }
+
+    public double getTotal() {
+        return total;
+    }
+}
+
+// Компонент корзины с сессионным scope
+@Service
+@Scope(value = "session", proxyMode = ScopedProxyMode.TARGET_CLASS)
+class ProductBasket {
+    private final Map<UUID, Integer> items;
+
+    public ProductBasket() {
+        this.items = new HashMap<>();
+    }
+
+    // Метод добавления продукта в корзину
+    public void addProduct(UUID productId) {
+        items.put(productId, items.getOrDefault(productId, 0) + 1);
+    }
+
+    // Метод получения всех продуктов в корзине
+    public Map<UUID, Integer> getItems() {
+        return Collections.unmodifiableMap(new HashMap<>(items));
+    }
+}
+
 // ==================== СЕРВИСЫ ====================
 
 // Сервис хранения
@@ -198,6 +268,11 @@ class StorageService {
         allItems.addAll(articles.values());
         return Collections.unmodifiableCollection(allItems);
     }
+
+    // Новый метод для получения продукта по ID
+    public Optional<Product> getProductById(UUID id) {
+        return Optional.ofNullable(products.get(id));
+    }
 }
 
 // Сервис поиска
@@ -225,16 +300,58 @@ class SearchService {
     }
 }
 
+// Сервис работы с корзиной
+@Service
+class BasketService {
+    private final ProductBasket productBasket;
+    private final StorageService storageService;
+
+    public BasketService(ProductBasket productBasket, StorageService storageService) {
+        this.productBasket = productBasket;
+        this.storageService = storageService;
+    }
+
+    // Метод добавления товара в корзину по ID
+    public void addProductToBasket(UUID productId) {
+        Optional<Product> product = storageService.getProductById(productId);
+        if (product.isEmpty()) {
+            throw new IllegalArgumentException("Продукт с ID " + productId + " не найден");
+        }
+        productBasket.addProduct(productId);
+    }
+
+    // Метод получения корзины пользователя
+    public UserBasket getUserBasket() {
+        Map<UUID, Integer> basketItems = productBasket.getItems();
+
+        // Преобразуем Map в список BasketItem с помощью StreamAPI
+        List<BasketItem> items = basketItems.entrySet().stream()
+                .map(entry -> {
+                    UUID productId = entry.getKey();
+                    Integer quantity = entry.getValue();
+                    Product product = storageService.getProductById(productId)
+                            .orElseThrow(() -> new IllegalArgumentException("Продукт не найден"));
+                    return new BasketItem(product, quantity);
+                })
+                .collect(Collectors.toList());
+
+        return new UserBasket(items);
+    }
+}
+
 // ==================== КОНТРОЛЛЕР ====================
 
 @RestController
+@RequestMapping("/shop")
 class ShopController {
     private final StorageService storageService;
     private final SearchService searchService;
+    private final BasketService basketService;
 
-    public ShopController(StorageService storageService, SearchService searchService) {
+    public ShopController(StorageService storageService, SearchService searchService, BasketService basketService) {
         this.storageService = storageService;
         this.searchService = searchService;
+        this.basketService = basketService;
     }
 
     @GetMapping("/products")
@@ -250,5 +367,18 @@ class ShopController {
     @GetMapping("/search")
     public Collection<SearchResult> search(@RequestParam String pattern) {
         return searchService.search(pattern);
+    }
+
+    // Новый метод для добавления продукта в корзину
+    @GetMapping("/basket/{id}")
+    public String addProduct(@PathVariable("id") UUID id) {
+        basketService.addProductToBasket(id);
+        return "Продукт успешно добавлен";
+    }
+
+    // Новый метод для отображения корзины
+    @GetMapping("/basket")
+    public UserBasket getUserBasket() {
+        return basketService.getUserBasket();
     }
 }
