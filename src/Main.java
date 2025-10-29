@@ -1,3 +1,6 @@
+// ==================== ПАКЕТ products ====================
+// === ОТДЕЛЬНЫЙ ФАЙЛ: Product.java ===
+// package products;
 
 class Product {
     private String name;
@@ -25,41 +28,42 @@ class Product {
 // === ОТДЕЛЬНЫЙ ФАЙЛ: ProductBasket.java ===
 // package products;
 
+import java.util.*;
+
 class ProductBasket {
-    private java.util.List<Product> products;
+    // ЗАМЕНА: List на Map, где ключ - имя продукта, значение - список продуктов с этим именем
+    private Map<String, List<Product>> productsMap;
 
     public ProductBasket() {
-        this.products = new java.util.ArrayList<>();
+        this.productsMap = new HashMap<>();
     }
 
     public void addProduct(Product product) {
-        products.add(product);
+        String productName = product.getName();
+        // Если продукт с таким именем еще не добавлен, создаем новый список
+        productsMap.putIfAbsent(productName, new ArrayList<>());
+        // Добавляем продукт в список по соответствующему имени
+        productsMap.get(productName).add(product);
     }
 
-    public java.util.List<Product> removeProductsByName(String name) {
-        java.util.List<Product> removedProducts = new java.util.ArrayList<>();
-        java.util.Iterator<Product> iterator = products.iterator();
-
-        while (iterator.hasNext()) {
-            Product product = iterator.next();
-            if (product.getName().equals(name)) {
-                removedProducts.add(product);
-                iterator.remove();
-            }
-        }
-
-        return removedProducts;
+    public List<Product> removeProductsByName(String name) {
+        // Удаляем и возвращаем весь список продуктов с данным именем
+        List<Product> removedProducts = productsMap.remove(name);
+        return removedProducts != null ? removedProducts : new ArrayList<>();
     }
 
     public void printBasket() {
-        if (products.isEmpty()) {
+        if (productsMap.isEmpty()) {
             System.out.println("Корзина пуста");
             return;
         }
 
         System.out.println("Содержимое корзины:");
-        for (Product product : products) {
-            System.out.println("- " + product);
+        // Перебираем все значения Map и выводим все продукты
+        for (List<Product> productList : productsMap.values()) {
+            for (Product product : productList) {
+                System.out.println("- " + product);
+            }
         }
     }
 }
@@ -68,24 +72,29 @@ class ProductBasket {
 // === ОТДЕЛЬНЫЙ ФАЙЛ: SearchEngine.java ===
 // package search;
 
+import java.util.*;
+
 class SearchEngine {
-    private java.util.List<Product> products;
+    private List<Product> products;
 
     public SearchEngine() {
-        this.products = new java.util.ArrayList<>();
+        this.products = new ArrayList<>();
     }
 
     public void addProduct(Product product) {
         products.add(product);
     }
 
-    public java.util.List<Product> search(String query) {
-        java.util.List<Product> results = new java.util.ArrayList<>();
+    // ИЗМЕНЕНИЕ: метод возвращает отсортированную Map вместо List
+    public Map<String, Product> search(String query) {
+        // Используем TreeMap для автоматической сортировки по ключам (именам продуктов)
+        Map<String, Product> results = new TreeMap<>();
         String lowerQuery = query.toLowerCase();
 
         for (Product product : products) {
             if (product.getName().toLowerCase().contains(lowerQuery)) {
-                results.add(product);
+                // Добавляем в Map: ключ - имя продукта, значение - сам продукт
+                results.put(product.getName(), product);
             }
         }
 
@@ -97,6 +106,8 @@ class SearchEngine {
 // === ОТДЕЛЬНЫЙ ФАЙЛ: Main.java ===
 // package main;
 
+import java.util.*;
+
 public class Main {
     public static void main(String[] args) {
         demonstrateProductBasket();
@@ -104,21 +115,22 @@ public class Main {
     }
 
     private static void demonstrateProductBasket() {
-        System.out.println("=== ДЕМОНСТРАЦИЯ РАБОТЫ КОРЗИНЫ ===");
+        System.out.println("=== ДЕМОНСТРАЦИЯ РАБОТЫ КОРЗИНЫ С MAP ===");
 
         // Создаем корзину и добавляем продукты
         ProductBasket basket = new ProductBasket();
         basket.addProduct(new Product("Яблоки", 150.0));
         basket.addProduct(new Product("Бананы", 80.0));
-        basket.addProduct(new Product("Яблоки", 120.0));
+        basket.addProduct(new Product("Яблоки", 120.0)); // Дубликат имени
         basket.addProduct(new Product("Апельсины", 200.0));
+        basket.addProduct(new Product("Бананы", 90.0)); // Дубликат имени
 
         System.out.println("\n--- Исходная корзина ---");
         basket.printBasket();
 
         // Демонстрация удаления существующего продукта
         System.out.println("\n--- Удаление яблок ---");
-        java.util.List<Product> removed = basket.removeProductsByName("Яблоки");
+        List<Product> removed = basket.removeProductsByName("Яблоки");
         if (!removed.isEmpty()) {
             System.out.println("Удаленные продукты:");
             for (Product product : removed) {
@@ -131,7 +143,7 @@ public class Main {
 
         // Демонстрация удаления несуществующего продукта
         System.out.println("\n--- Попытка удалить груши ---");
-        java.util.List<Product> removed2 = basket.removeProductsByName("Груши");
+        List<Product> removed2 = basket.removeProductsByName("Груши");
         if (removed2.isEmpty()) {
             System.out.println("Список удаленных продуктов пуст");
         }
@@ -141,7 +153,7 @@ public class Main {
     }
 
     private static void demonstrateSearchEngine() {
-        System.out.println("\n\n=== ДЕМОНСТРАЦИЯ РАБОТЫ ПОИСКОВОГО ДВИЖКА ===");
+        System.out.println("\n\n=== ДЕМОНСТРАЦИЯ РАБОТЫ ПОИСКОВОГО ДВИЖКА С MAP ===");
 
         // Демонстрация работы поискового движка
         SearchEngine searchEngine = new SearchEngine();
@@ -151,33 +163,49 @@ public class Main {
         searchEngine.addProduct(new Product("Смартфон Xiaomi", 12000.0));
         searchEngine.addProduct(new Product("Телевизор LG", 35000.0));
         searchEngine.addProduct(new Product("Смартфон Apple iPhone", 80000.0));
+        searchEngine.addProduct(new Product("Наушники Apple", 15000.0));
 
-        System.out.println("\n--- Результаты поиска 'Смартфон' ---");
-        java.util.List<Product> searchResults = searchEngine.search("Смартфон");
+        System.out.println("\n--- Результаты поиска 'Смартфон' (отсортированные по имени) ---");
+        Map<String, Product> searchResults = searchEngine.search("Смартфон");
         System.out.println("Найдено товаров: " + searchResults.size());
-        for (Product product : searchResults) {
-            System.out.println("- " + product);
+        // TreeMap автоматически сортирует по ключам (именам продуктов)
+        for (Map.Entry<String, Product> entry : searchResults.entrySet()) {
+            System.out.println("- " + entry.getValue());
         }
 
-        System.out.println("\n--- Результаты поиска 'Sony' ---");
-        java.util.List<Product> sonyResults = searchEngine.search("Sony");
-        System.out.println("Найдено товаров: " + sonyResults.size());
-        for (Product product : sonyResults) {
-            System.out.println("- " + product);
+        System.out.println("\n--- Результаты поиска 'Наушники' (отсортированные по имени) ---");
+        Map<String, Product> headphonesResults = searchEngine.search("Наушники");
+        System.out.println("Найдено товаров: " + headphonesResults.size());
+        for (Map.Entry<String, Product> entry : headphonesResults.entrySet()) {
+            System.out.println("- " + entry.getValue());
         }
 
-        System.out.println("\n--- Результаты поиска 'Телевизор' ---");
-        java.util.List<Product> tvResults = searchEngine.search("Телевизор");
-        System.out.println("Найдено товаров: " + tvResults.size());
-        for (Product product : tvResults) {
-            System.out.println("- " + product);
+        System.out.println("\n--- Результаты поиска 'Apple' (отсортированные по имени) ---");
+        Map<String, Product> appleResults = searchEngine.search("Apple");
+        System.out.println("Найдено товаров: " + appleResults.size());
+        for (Map.Entry<String, Product> entry : appleResults.entrySet()) {
+            System.out.println("- " + entry.getValue());
         }
 
         System.out.println("\n--- Результаты поиска 'Несуществующий' ---");
-        java.util.List<Product> emptyResults = searchEngine.search("Несуществующий");
+        Map<String, Product> emptyResults = searchEngine.search("Несуществующий");
         System.out.println("Найдено товаров: " + emptyResults.size());
         if (emptyResults.isEmpty()) {
             System.out.println("Товары не найдены");
+        }
+
+        // Демонстрация сортировки - специально добавляем продукты в разном порядке
+        System.out.println("\n--- Демонстрация автоматической сортировки ---");
+        SearchEngine sortedDemo = new SearchEngine();
+        sortedDemo.addProduct(new Product("Зебра", 1000.0));
+        sortedDemo.addProduct(new Product("Ананас", 500.0));
+        sortedDemo.addProduct(new Product("Манго", 700.0));
+        sortedDemo.addProduct(new Product("Банан", 300.0));
+
+        Map<String, Product> allResults = sortedDemo.search("");
+        System.out.println("Все товары (автоматически отсортированы по имени):");
+        for (Map.Entry<String, Product> entry : allResults.entrySet()) {
+            System.out.println("- " + entry.getValue());
         }
     }
 }
