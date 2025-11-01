@@ -3,6 +3,8 @@ package ru.hogwarts.school;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,7 +37,7 @@ class Student {
     @Column(name = "age", nullable = false)
     private int age;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "faculty_id")
     private Faculty faculty;
 
@@ -43,12 +45,6 @@ class Student {
     public Student() {}
 
     public Student(String name, int age) {
-        this.name = name;
-        this.age = age;
-    }
-
-    public Student(Long id, String name, int age) {
-        this.id = id;
         this.name = name;
         this.age = age;
     }
@@ -103,8 +99,7 @@ class Student {
 
     @Override
     public String toString() {
-        return "Student{id=" + id + ", name='" + name + "', age=" + age +
-                (faculty != null ? ", faculty=" + faculty.getName() : "") + "}";
+        return "Student{id=" + id + ", name='" + name + "', age=" + age + "}";
     }
 }
 
@@ -121,19 +116,13 @@ class Faculty {
     @Column(name = "color", nullable = false)
     private String color;
 
-    @OneToMany(mappedBy = "faculty", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "faculty", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Student> students = new ArrayList<>();
 
     // Конструкторы
     public Faculty() {}
 
     public Faculty(String name, String color) {
-        this.name = name;
-        this.color = color;
-    }
-
-    public Faculty(Long id, String name, String color) {
-        this.id = id;
         this.name = name;
         this.color = color;
     }
@@ -198,11 +187,31 @@ interface StudentRepository extends JpaRepository<Student, Long> {
     List<Student> findByAge(int age);
     List<Student> findByAgeBetween(int minAge, int maxAge);
     List<Student> findByFacultyId(Long facultyId);
+
+    // Нативные SQL запросы
+    @Query(value = "SELECT * FROM students WHERE age BETWEEN :minAge AND :maxAge", nativeQuery = true)
+    List<Student> findStudentsByAgeBetweenNative(@Param("minAge") int minAge, @Param("maxAge") int maxAge);
+
+    @Query(value = "SELECT name FROM students", nativeQuery = true)
+    List<String> findAllStudentNames();
+
+    @Query(value = "SELECT * FROM students WHERE name ILIKE '%' || :letter || '%'", nativeQuery = true)
+    List<Student> findStudentsByNameContainingLetter(@Param("letter") String letter);
+
+    @Query(value = "SELECT * FROM students WHERE age < id", nativeQuery = true)
+    List<Student> findStudentsWhereAgeLessThanId();
+
+    @Query(value = "SELECT * FROM students ORDER BY age", nativeQuery = true)
+    List<Student> findAllStudentsOrderByAge();
 }
 
 interface FacultyRepository extends JpaRepository<Faculty, Long> {
     List<Faculty> findByColor(String color);
     List<Faculty> findByNameIgnoreCaseOrColorIgnoreCase(String name, String color);
+
+    // Регистронезависимый поиск по имени или цвету
+    @Query("SELECT f FROM Faculty f WHERE LOWER(f.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR LOWER(f.color) LIKE LOWER(CONCAT('%', :searchTerm, '%'))")
+    List<Faculty> findByNameOrColorIgnoreCase(@Param("searchTerm") String searchTerm);
 }
 
 // ==================== СЕРВИСЫ ====================
@@ -233,13 +242,20 @@ class StudentService {
 
     @Operation(summary = "Обновить студента")
     public Student updateStudent(Long id, Student student) {
-        student.setId(id);
-        return studentRepository.save(student);
+        if (studentRepository.existsById(id)) {
+            student.setId(id);
+            return studentRepository.save(student);
+        }
+        return null;
     }
 
     @Operation(summary = "Удалить студента")
-    public void deleteStudent(Long id) {
-        studentRepository.deleteById(id);
+    public boolean deleteStudent(Long id) {
+        if (studentRepository.existsById(id)) {
+            studentRepository.deleteById(id);
+            return true;
+        }
+        return false;
     }
 
     @Operation(summary = "Найти студентов по возрасту")
@@ -250,6 +266,33 @@ class StudentService {
     @Operation(summary = "Найти студентов по диапазону возрастов")
     public List<Student> getStudentsByAgeBetween(int minAge, int maxAge) {
         return studentRepository.findByAgeBetween(minAge, maxAge);
+    }
+
+    @Operation(summary = "Получить факультет студента")
+    public Faculty getStudentFaculty(Long studentId) {
+        Optional<Student> student = studentRepository.findById(studentId);
+        return student.map(Student::getFaculty).orElse(null);
+    }
+
+    // Методы для демонстрации SQL запросов
+    @Operation(summary = "Получить имена всех студентов")
+    public List<String> getAllStudentNames() {
+        return studentRepository.findAllStudentNames();
+    }
+
+    @Operation(summary = "Найти студентов с буквой в имени")
+    public List<Student> getStudentsByNameContainingLetter(String letter) {
+        return studentRepository.findStudentsByNameContainingLetter(letter);
+    }
+
+    @Operation(summary = "Найти студентов где возраст меньше ID")
+    public List<Student> getStudentsWhereAgeLessThanId() {
+        return studentRepository.findStudentsWhereAgeLessThanId();
+    }
+
+    @Operation(summary = "Получить студентов отсортированных по возрасту")
+    public List<Student> getAllStudentsOrderByAge() {
+        return studentRepository.findAllStudentsOrderByAge();
     }
 }
 
@@ -281,13 +324,20 @@ class FacultyService {
 
     @Operation(summary = "Обновить факультет")
     public Faculty updateFaculty(Long id, Faculty faculty) {
-        faculty.setId(id);
-        return facultyRepository.save(faculty);
+        if (facultyRepository.existsById(id)) {
+            faculty.setId(id);
+            return facultyRepository.save(faculty);
+        }
+        return null;
     }
 
     @Operation(summary = "Удалить факультет")
-    public void deleteFaculty(Long id) {
-        facultyRepository.deleteById(id);
+    public boolean deleteFaculty(Long id) {
+        if (facultyRepository.existsById(id)) {
+            facultyRepository.deleteById(id);
+            return true;
+        }
+        return false;
     }
 
     @Operation(summary = "Найти факультеты по цвету")
@@ -295,9 +345,9 @@ class FacultyService {
         return facultyRepository.findByColor(color);
     }
 
-    @Operation(summary = "Найти факультеты по имени или цвету")
+    @Operation(summary = "Найти факультеты по имени или цвету (регистронезависимо)")
     public List<Faculty> getFacultiesByNameOrColor(String searchTerm) {
-        return facultyRepository.findByNameIgnoreCaseOrColorIgnoreCase(searchTerm, searchTerm);
+        return facultyRepository.findByNameOrColorIgnoreCase(searchTerm);
     }
 
     @Operation(summary = "Получить студентов факультета")
@@ -320,8 +370,9 @@ class StudentController {
 
     @PostMapping
     @Operation(summary = "Создать нового студента")
-    public Student createStudent(@RequestBody Student student) {
-        return studentService.createStudent(student);
+    public ResponseEntity<Student> createStudent(@RequestBody Student student) {
+        Student createdStudent = studentService.createStudent(student);
+        return ResponseEntity.ok(createdStudent);
     }
 
     @GetMapping("/{id}")
@@ -342,14 +393,19 @@ class StudentController {
     @Operation(summary = "Обновить данные студента")
     public ResponseEntity<Student> updateStudent(@PathVariable Long id, @RequestBody Student student) {
         Student updatedStudent = studentService.updateStudent(id, student);
-        return ResponseEntity.ok(updatedStudent);
+        if (updatedStudent != null) {
+            return ResponseEntity.ok(updatedStudent);
+        }
+        return ResponseEntity.notFound().build();
     }
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Удалить студента")
     public ResponseEntity<Void> deleteStudent(@PathVariable Long id) {
-        studentService.deleteStudent(id);
-        return ResponseEntity.ok().build();
+        if (studentService.deleteStudent(id)) {
+            return ResponseEntity.ok().build();
+        }
+        return ResponseEntity.notFound().build();
     }
 
     @GetMapping("/age/{age}")
@@ -358,10 +414,45 @@ class StudentController {
         return studentService.getStudentsByAge(age);
     }
 
-    @GetMapping("/age")
+    @GetMapping("/age/between")
     @Operation(summary = "Найти студентов по диапазону возрастов")
     public List<Student> getStudentsByAgeRange(@RequestParam int min, @RequestParam int max) {
         return studentService.getStudentsByAgeBetween(min, max);
+    }
+
+    @GetMapping("/{id}/faculty")
+    @Operation(summary = "Получить факультет студента")
+    public ResponseEntity<Faculty> getStudentFaculty(@PathVariable Long id) {
+        Faculty faculty = studentService.getStudentFaculty(id);
+        if (faculty != null) {
+            return ResponseEntity.ok(faculty);
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    // Эндпоинты для демонстрации SQL запросов
+    @GetMapping("/names")
+    @Operation(summary = "Получить имена всех студентов")
+    public List<String> getAllStudentNames() {
+        return studentService.getAllStudentNames();
+    }
+
+    @GetMapping("/search/name")
+    @Operation(summary = "Найти студентов с буквой в имени")
+    public List<Student> getStudentsByNameContainingLetter(@RequestParam String letter) {
+        return studentService.getStudentsByNameContainingLetter(letter);
+    }
+
+    @GetMapping("/age-less-than-id")
+    @Operation(summary = "Найти студентов где возраст меньше ID")
+    public List<Student> getStudentsWhereAgeLessThanId() {
+        return studentService.getStudentsWhereAgeLessThanId();
+    }
+
+    @GetMapping("/sorted-by-age")
+    @Operation(summary = "Получить студентов отсортированных по возрасту")
+    public List<Student> getAllStudentsOrderByAge() {
+        return studentService.getAllStudentsOrderByAge();
     }
 }
 
@@ -377,8 +468,9 @@ class FacultyController {
 
     @PostMapping
     @Operation(summary = "Создать новый факультет")
-    public Faculty createFaculty(@RequestBody Faculty faculty) {
-        return facultyService.createFaculty(faculty);
+    public ResponseEntity<Faculty> createFaculty(@RequestBody Faculty faculty) {
+        Faculty createdFaculty = facultyService.createFaculty(faculty);
+        return ResponseEntity.ok(createdFaculty);
     }
 
     @GetMapping("/{id}")
@@ -399,14 +491,19 @@ class FacultyController {
     @Operation(summary = "Обновить данные факультета")
     public ResponseEntity<Faculty> updateFaculty(@PathVariable Long id, @RequestBody Faculty faculty) {
         Faculty updatedFaculty = facultyService.updateFaculty(id, faculty);
-        return ResponseEntity.ok(updatedFaculty);
+        if (updatedFaculty != null) {
+            return ResponseEntity.ok(updatedFaculty);
+        }
+        return ResponseEntity.notFound().build();
     }
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Удалить факультет")
     public ResponseEntity<Void> deleteFaculty(@PathVariable Long id) {
-        facultyService.deleteFaculty(id);
-        return ResponseEntity.ok().build();
+        if (facultyService.deleteFaculty(id)) {
+            return ResponseEntity.ok().build();
+        }
+        return ResponseEntity.notFound().build();
     }
 
     @GetMapping("/color/{color}")
@@ -416,7 +513,7 @@ class FacultyController {
     }
 
     @GetMapping("/search")
-    @Operation(summary = "Найти факультеты по имени или цвету")
+    @Operation(summary = "Найти факультеты по имени или цвету (регистронезависимо)")
     public List<Faculty> getFacultiesByNameOrColor(@RequestParam String search) {
         return facultyService.getFacultiesByNameOrColor(search);
     }
@@ -458,7 +555,10 @@ class DataInitializer {
                 new Student("Полумна Лавгуд", 16),
                 new Student("Седрик Диггори", 18),
                 new Student("Фред Уизли", 18),
-                new Student("Джордж Уизли", 18)
+                new Student("Джордж Уизли", 18),
+                new Student("Джинни Уизли", 15),
+                new Student("Винсент Крэбб", 16),
+                new Student("Грегори Гойл", 16)
         );
 
         // Сохраняем студентов
@@ -474,6 +574,9 @@ class DataInitializer {
         students.get(6).setFaculty(hufflepuff); // Седрик
         students.get(7).setFaculty(gryffindor); // Фред
         students.get(8).setFaculty(gryffindor); // Джордж
+        students.get(9).setFaculty(gryffindor); // Джинни
+        students.get(10).setFaculty(slytherin); // Крэбб
+        students.get(11).setFaculty(slytherin); // Гойл
 
         studentRepository.saveAll(students);
 
@@ -482,3 +585,5 @@ class DataInitializer {
         System.out.println("Создано студентов: " + studentRepository.count());
     }
 }
+
+/
