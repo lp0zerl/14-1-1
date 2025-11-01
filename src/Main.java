@@ -49,6 +49,12 @@ class Student {
         this.age = age;
     }
 
+    public Student(Long id, String name, int age) {
+        this.id = id;
+        this.name = name;
+        this.age = age;
+    }
+
     // Геттеры и сеттеры
     public Long getId() {
         return id;
@@ -127,6 +133,12 @@ class Faculty {
         this.color = color;
     }
 
+    public Faculty(Long id, String name, String color) {
+        this.id = id;
+        this.name = name;
+        this.color = color;
+    }
+
     // Геттеры и сеттеры
     public Long getId() {
         return id;
@@ -187,31 +199,11 @@ interface StudentRepository extends JpaRepository<Student, Long> {
     List<Student> findByAge(int age);
     List<Student> findByAgeBetween(int minAge, int maxAge);
     List<Student> findByFacultyId(Long facultyId);
-
-    // Нативные SQL запросы
-    @Query(value = "SELECT * FROM students WHERE age BETWEEN :minAge AND :maxAge", nativeQuery = true)
-    List<Student> findStudentsByAgeBetweenNative(@Param("minAge") int minAge, @Param("maxAge") int maxAge);
-
-    @Query(value = "SELECT name FROM students", nativeQuery = true)
-    List<String> findAllStudentNames();
-
-    @Query(value = "SELECT * FROM students WHERE name ILIKE '%' || :letter || '%'", nativeQuery = true)
-    List<Student> findStudentsByNameContainingLetter(@Param("letter") String letter);
-
-    @Query(value = "SELECT * FROM students WHERE age < id", nativeQuery = true)
-    List<Student> findStudentsWhereAgeLessThanId();
-
-    @Query(value = "SELECT * FROM students ORDER BY age", nativeQuery = true)
-    List<Student> findAllStudentsOrderByAge();
 }
 
 interface FacultyRepository extends JpaRepository<Faculty, Long> {
     List<Faculty> findByColor(String color);
     List<Faculty> findByNameIgnoreCaseOrColorIgnoreCase(String name, String color);
-
-    // Регистронезависимый поиск по имени или цвету
-    @Query("SELECT f FROM Faculty f WHERE LOWER(f.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR LOWER(f.color) LIKE LOWER(CONCAT('%', :searchTerm, '%'))")
-    List<Faculty> findByNameOrColorIgnoreCase(@Param("searchTerm") String searchTerm);
 }
 
 // ==================== СЕРВИСЫ ====================
@@ -273,27 +265,6 @@ class StudentService {
         Optional<Student> student = studentRepository.findById(studentId);
         return student.map(Student::getFaculty).orElse(null);
     }
-
-    // Методы для демонстрации SQL запросов
-    @Operation(summary = "Получить имена всех студентов")
-    public List<String> getAllStudentNames() {
-        return studentRepository.findAllStudentNames();
-    }
-
-    @Operation(summary = "Найти студентов с буквой в имени")
-    public List<Student> getStudentsByNameContainingLetter(String letter) {
-        return studentRepository.findStudentsByNameContainingLetter(letter);
-    }
-
-    @Operation(summary = "Найти студентов где возраст меньше ID")
-    public List<Student> getStudentsWhereAgeLessThanId() {
-        return studentRepository.findStudentsWhereAgeLessThanId();
-    }
-
-    @Operation(summary = "Получить студентов отсортированных по возрасту")
-    public List<Student> getAllStudentsOrderByAge() {
-        return studentRepository.findAllStudentsOrderByAge();
-    }
 }
 
 @Service
@@ -347,7 +318,7 @@ class FacultyService {
 
     @Operation(summary = "Найти факультеты по имени или цвету (регистронезависимо)")
     public List<Faculty> getFacultiesByNameOrColor(String searchTerm) {
-        return facultyRepository.findByNameOrColorIgnoreCase(searchTerm);
+        return facultyRepository.findByNameIgnoreCaseOrColorIgnoreCase(searchTerm, searchTerm);
     }
 
     @Operation(summary = "Получить студентов факультета")
@@ -428,31 +399,6 @@ class StudentController {
             return ResponseEntity.ok(faculty);
         }
         return ResponseEntity.notFound().build();
-    }
-
-    // Эндпоинты для демонстрации SQL запросов
-    @GetMapping("/names")
-    @Operation(summary = "Получить имена всех студентов")
-    public List<String> getAllStudentNames() {
-        return studentService.getAllStudentNames();
-    }
-
-    @GetMapping("/search/name")
-    @Operation(summary = "Найти студентов с буквой в имени")
-    public List<Student> getStudentsByNameContainingLetter(@RequestParam String letter) {
-        return studentService.getStudentsByNameContainingLetter(letter);
-    }
-
-    @GetMapping("/age-less-than-id")
-    @Operation(summary = "Найти студентов где возраст меньше ID")
-    public List<Student> getStudentsWhereAgeLessThanId() {
-        return studentService.getStudentsWhereAgeLessThanId();
-    }
-
-    @GetMapping("/sorted-by-age")
-    @Operation(summary = "Получить студентов отсортированных по возрасту")
-    public List<Student> getAllStudentsOrderByAge() {
-        return studentService.getAllStudentsOrderByAge();
     }
 }
 
@@ -586,4 +532,598 @@ class DataInitializer {
     }
 }
 
-/
+// ==================== ТЕСТЫ ====================
+
+// Импорты для тестов
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.test.annotation.DirtiesContext;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+// ==================== TEST REST TEMPLATE TESTS ====================
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
+class StudentControllerTestRestTemplateTest {
+
+    @LocalServerPort
+    private int port;
+
+    @Autowired
+    private TestRestTemplate restTemplate;
+
+    private String baseUrl;
+
+    private static final String STUDENT_NAME = "Тестовый Студент";
+    private static final int STUDENT_AGE = 20;
+
+    @BeforeEach
+    void setUp() {
+        baseUrl = "http://localhost:" + port + "/student";
+    }
+
+    @Test
+    void shouldCreateStudentSuccessfully() {
+        Student student = new Student(STUDENT_NAME, STUDENT_AGE);
+        ResponseEntity<Student> response = restTemplate.postForEntity(baseUrl, student, Student.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertNotNull(response.getBody().getId());
+        assertEquals(STUDENT_NAME, response.getBody().getName());
+        assertEquals(STUDENT_AGE, response.getBody().getAge());
+    }
+
+    @Test
+    void shouldGetStudentByIdSuccessfully() {
+        Student student = new Student(STUDENT_NAME, STUDENT_AGE);
+        ResponseEntity<Student> createdResponse = restTemplate.postForEntity(baseUrl, student, Student.class);
+        Long studentId = createdResponse.getBody().getId();
+        ResponseEntity<Student> response = restTemplate.getForEntity(baseUrl + "/" + studentId, Student.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals(studentId, response.getBody().getId());
+        assertEquals(STUDENT_NAME, response.getBody().getName());
+        assertEquals(STUDENT_AGE, response.getBody().getAge());
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenGettingNonExistentStudent() {
+        ResponseEntity<Student> response = restTemplate.getForEntity(baseUrl + "/999", Student.class);
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+    }
+
+    @Test
+    void shouldGetAllStudentsSuccessfully() {
+        Student student1 = new Student("Студент 1", 18);
+        Student student2 = new Student("Студент 2", 19);
+        restTemplate.postForEntity(baseUrl, student1, Student.class);
+        restTemplate.postForEntity(baseUrl, student2, Student.class);
+        ResponseEntity<List> response = restTemplate.getForEntity(baseUrl, List.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody().size() >= 2);
+    }
+
+    @Test
+    void shouldUpdateStudentSuccessfully() {
+        Student student = new Student(STUDENT_NAME, STUDENT_AGE);
+        ResponseEntity<Student> createdResponse = restTemplate.postForEntity(baseUrl, student, Student.class);
+        Long studentId = createdResponse.getBody().getId();
+        Student updatedStudent = new Student("Обновленный Студент", 21);
+        restTemplate.put(baseUrl + "/" + studentId, updatedStudent);
+        ResponseEntity<Student> response = restTemplate.getForEntity(baseUrl + "/" + studentId, Student.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("Обновленный Студент", response.getBody().getName());
+        assertEquals(21, response.getBody().getAge());
+    }
+
+    @Test
+    void shouldDeleteStudentSuccessfully() {
+        Student student = new Student(STUDENT_NAME, STUDENT_AGE);
+        ResponseEntity<Student> createdResponse = restTemplate.postForEntity(baseUrl, student, Student.class);
+        Long studentId = createdResponse.getBody().getId();
+        restTemplate.delete(baseUrl + "/" + studentId);
+        ResponseEntity<Student> response = restTemplate.getForEntity(baseUrl + "/" + studentId, Student.class);
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+    }
+
+    @Test
+    void shouldGetStudentsByAgeSuccessfully() {
+        Student student1 = new Student("Студент 18 лет", 18);
+        Student student2 = new Student("Студент 19 лет", 19);
+        restTemplate.postForEntity(baseUrl, student1, Student.class);
+        restTemplate.postForEntity(baseUrl, student2, Student.class);
+        ResponseEntity<List> response = restTemplate.getForEntity(baseUrl + "/age/18", List.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+    }
+
+    @Test
+    void shouldGetStudentsByAgeRangeSuccessfully() {
+        Student student1 = new Student("Студент 18 лет", 18);
+        Student student2 = new Student("Студент 20 лет", 20);
+        restTemplate.postForEntity(baseUrl, student1, Student.class);
+        restTemplate.postForEntity(baseUrl, student2, Student.class);
+        ResponseEntity<List> response = restTemplate.getForEntity(
+                baseUrl + "/age/between?min=18&max=20", List.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+    }
+
+    @Test
+    void shouldGetStudentFacultySuccessfully() {
+        Faculty faculty = new Faculty("Гриффиндор", "красный");
+        ResponseEntity<Faculty> facultyResponse = restTemplate.postForEntity(
+                "http://localhost:" + port + "/faculty", faculty, Faculty.class);
+        Long facultyId = facultyResponse.getBody().getId();
+        Student student = new Student(STUDENT_NAME, STUDENT_AGE);
+        student.setFaculty(facultyResponse.getBody());
+        ResponseEntity<Student> studentResponse = restTemplate.postForEntity(baseUrl, student, Student.class);
+        Long studentId = studentResponse.getBody().getId();
+        ResponseEntity<Faculty> response = restTemplate.getForEntity(
+                baseUrl + "/" + studentId + "/faculty", Faculty.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("Гриффиндор", response.getBody().getName());
+    }
+}
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
+class FacultyControllerTestRestTemplateTest {
+
+    @LocalServerPort
+    private int port;
+
+    @Autowired
+    private TestRestTemplate restTemplate;
+
+    private String baseUrl;
+
+    private static final String FACULTY_NAME = "Гриффиндор";
+    private static final String FACULTY_COLOR = "красный";
+
+    @BeforeEach
+    void setUp() {
+        baseUrl = "http://localhost:" + port + "/faculty";
+    }
+
+    @Test
+    void shouldCreateFacultySuccessfully() {
+        Faculty faculty = new Faculty(FACULTY_NAME, FACULTY_COLOR);
+        ResponseEntity<Faculty> response = restTemplate.postForEntity(baseUrl, faculty, Faculty.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertNotNull(response.getBody().getId());
+        assertEquals(FACULTY_NAME, response.getBody().getName());
+        assertEquals(FACULTY_COLOR, response.getBody().getColor());
+    }
+
+    @Test
+    void shouldGetFacultyByIdSuccessfully() {
+        Faculty faculty = new Faculty(FACULTY_NAME, FACULTY_COLOR);
+        ResponseEntity<Faculty> createdResponse = restTemplate.postForEntity(baseUrl, faculty, Faculty.class);
+        Long facultyId = createdResponse.getBody().getId();
+        ResponseEntity<Faculty> response = restTemplate.getForEntity(baseUrl + "/" + facultyId, Faculty.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals(facultyId, response.getBody().getId());
+        assertEquals(FACULTY_NAME, response.getBody().getName());
+        assertEquals(FACULTY_COLOR, response.getBody().getColor());
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenGettingNonExistentFaculty() {
+        ResponseEntity<Faculty> response = restTemplate.getForEntity(baseUrl + "/999", Faculty.class);
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+    }
+
+    @Test
+    void shouldGetAllFacultiesSuccessfully() {
+        Faculty faculty1 = new Faculty("Гриффиндор", "красный");
+        Faculty faculty2 = new Faculty("Слизерин", "зеленый");
+        restTemplate.postForEntity(baseUrl, faculty1, Faculty.class);
+        restTemplate.postForEntity(baseUrl, faculty2, Faculty.class);
+        ResponseEntity<List> response = restTemplate.getForEntity(baseUrl, List.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody().size() >= 2);
+    }
+
+    @Test
+    void shouldUpdateFacultySuccessfully() {
+        Faculty faculty = new Faculty(FACULTY_NAME, FACULTY_COLOR);
+        ResponseEntity<Faculty> createdResponse = restTemplate.postForEntity(baseUrl, faculty, Faculty.class);
+        Long facultyId = createdResponse.getBody().getId();
+        Faculty updatedFaculty = new Faculty("Обновленный Факультет", "синий");
+        restTemplate.put(baseUrl + "/" + facultyId, updatedFaculty);
+        ResponseEntity<Faculty> response = restTemplate.getForEntity(baseUrl + "/" + facultyId, Faculty.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("Обновленный Факультет", response.getBody().getName());
+        assertEquals("синий", response.getBody().getColor());
+    }
+
+    @Test
+    void shouldDeleteFacultySuccessfully() {
+        Faculty faculty = new Faculty(FACULTY_NAME, FACULTY_COLOR);
+        ResponseEntity<Faculty> createdResponse = restTemplate.postForEntity(baseUrl, faculty, Faculty.class);
+        Long facultyId = createdResponse.getBody().getId();
+        restTemplate.delete(baseUrl + "/" + facultyId);
+        ResponseEntity<Faculty> response = restTemplate.getForEntity(baseUrl + "/" + facultyId, Faculty.class);
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+    }
+
+    @Test
+    void shouldGetFacultiesByColorSuccessfully() {
+        Faculty faculty1 = new Faculty("Гриффиндор", "красный");
+        Faculty faculty2 = new Faculty("Слизерин", "зеленый");
+        restTemplate.postForEntity(baseUrl, faculty1, Faculty.class);
+        restTemplate.postForEntity(baseUrl, faculty2, Faculty.class);
+        ResponseEntity<List> response = restTemplate.getForEntity(baseUrl + "/color/красный", List.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+    }
+
+    @Test
+    void shouldSearchFacultiesByNameOrColorSuccessfully() {
+        Faculty faculty1 = new Faculty("Гриффиндор", "красный");
+        Faculty faculty2 = new Faculty("Слизерин", "зеленый");
+        restTemplate.postForEntity(baseUrl, faculty1, Faculty.class);
+        restTemplate.postForEntity(baseUrl, faculty2, Faculty.class);
+        ResponseEntity<List> response = restTemplate.getForEntity(
+                baseUrl + "/search?search=гриф", List.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+    }
+
+    @Test
+    void shouldGetFacultyStudentsSuccessfully() {
+        Faculty faculty = new Faculty(FACULTY_NAME, FACULTY_COLOR);
+        ResponseEntity<Faculty> facultyResponse = restTemplate.postForEntity(baseUrl, faculty, Faculty.class);
+        Long facultyId = facultyResponse.getBody().getId();
+        Student student1 = new Student("Студент 1", 18);
+        student1.setFaculty(facultyResponse.getBody());
+        Student student2 = new Student("Студент 2", 19);
+        student2.setFaculty(facultyResponse.getBody());
+        String studentUrl = "http://localhost:" + port + "/student";
+        restTemplate.postForEntity(studentUrl, student1, Student.class);
+        restTemplate.postForEntity(studentUrl, student2, Student.class);
+        ResponseEntity<List> response = restTemplate.getForEntity(
+                baseUrl + "/" + facultyId + "/students", List.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+    }
+}
+
+// ==================== WEB MVC TESTS ====================
+
+@WebMvcTest(StudentController.class)
+class StudentControllerWebMvcTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private StudentService studentService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    private static final String STUDENT_NAME = "Тестовый Студент";
+    private static final int STUDENT_AGE = 20;
+
+    @Test
+    void shouldCreateStudentSuccessfully() throws Exception {
+        Student student = new Student(STUDENT_NAME, STUDENT_AGE);
+        Student savedStudent = new Student(1L, STUDENT_NAME, STUDENT_AGE);
+        when(studentService.createStudent(any(Student.class))).thenReturn(savedStudent);
+        mockMvc.perform(MockMvcRequestBuilders.post("/student")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(student)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.name").value(STUDENT_NAME))
+                .andExpect(jsonPath("$.age").value(STUDENT_AGE));
+    }
+
+    @Test
+    void shouldGetStudentByIdSuccessfully() throws Exception {
+        Student student = new Student(1L, STUDENT_NAME, STUDENT_AGE);
+        when(studentService.getStudentById(1L)).thenReturn(Optional.of(student));
+        mockMvc.perform(MockMvcRequestBuilders.get("/student/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.name").value(STUDENT_NAME))
+                .andExpect(jsonPath("$.age").value(STUDENT_AGE));
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenGettingNonExistentStudent() throws Exception {
+        when(studentService.getStudentById(anyLong())).thenReturn(Optional.empty());
+        mockMvc.perform(MockMvcRequestBuilders.get("/student/999"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldGetAllStudentsSuccessfully() throws Exception {
+        List<Student> students = Arrays.asList(
+                new Student(1L, "Студент 1", 18),
+                new Student(2L, "Студент 2", 19)
+        );
+        when(studentService.getAllStudents()).thenReturn(students);
+        mockMvc.perform(MockMvcRequestBuilders.get("/student"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(1L))
+                .andExpect(jsonPath("$[1].id").value(2L));
+    }
+
+    @Test
+    void shouldUpdateStudentSuccessfully() throws Exception {
+        Student updatedStudent = new Student(1L, "Обновленный Студент", 21);
+        when(studentService.updateStudent(anyLong(), any(Student.class))).thenReturn(updatedStudent);
+        mockMvc.perform(MockMvcRequestBuilders.put("/student/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updatedStudent)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.name").value("Обновленный Студент"))
+                .andExpect(jsonPath("$.age").value(21));
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenUpdatingNonExistentStudent() throws Exception {
+        when(studentService.updateStudent(anyLong(), any(Student.class))).thenReturn(null);
+        mockMvc.perform(MockMvcRequestBuilders.put("/student/999")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new Student())))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldDeleteStudentSuccessfully() throws Exception {
+        when(studentService.deleteStudent(1L)).thenReturn(true);
+        mockMvc.perform(MockMvcRequestBuilders.delete("/student/1"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenDeletingNonExistentStudent() throws Exception {
+        when(studentService.deleteStudent(anyLong())).thenReturn(false);
+        mockMvc.perform(MockMvcRequestBuilders.delete("/student/999"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldGetStudentsByAgeSuccessfully() throws Exception {
+        List<Student> students = Arrays.asList(
+                new Student(1L, "Студент 18 лет", 18),
+                new Student(2L, "Студент 18 лет 2", 18)
+        );
+        when(studentService.getStudentsByAge(18)).thenReturn(students);
+        mockMvc.perform(MockMvcRequestBuilders.get("/student/age/18"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].age").value(18))
+                .andExpect(jsonPath("$[1].age").value(18));
+    }
+
+    @Test
+    void shouldGetStudentsByAgeRangeSuccessfully() throws Exception {
+        List<Student> students = Arrays.asList(
+                new Student(1L, "Студент 18 лет", 18),
+                new Student(2L, "Студент 19 лет", 19)
+        );
+        when(studentService.getStudentsByAgeBetween(18, 20)).thenReturn(students);
+        mockMvc.perform(MockMvcRequestBuilders.get("/student/age/between")
+                        .param("min", "18")
+                        .param("max", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].age").value(18))
+                .andExpect(jsonPath("$[1].age").value(19));
+    }
+
+    @Test
+    void shouldGetStudentFacultySuccessfully() throws Exception {
+        Faculty faculty = new Faculty(1L, "Гриффиндор", "красный");
+        when(studentService.getStudentFaculty(1L)).thenReturn(faculty);
+        mockMvc.perform(MockMvcRequestBuilders.get("/student/1/faculty"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.name").value("Гриффиндор"))
+                .andExpect(jsonPath("$.color").value("красный"));
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenGettingFacultyOfNonExistentStudent() throws Exception {
+        when(studentService.getStudentFaculty(anyLong())).thenReturn(null);
+        mockMvc.perform(MockMvcRequestBuilders.get("/student/999/faculty"))
+                .andExpect(status().isNotFound());
+    }
+}
+
+@WebMvcTest(FacultyController.class)
+class FacultyControllerWebMvcTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private FacultyService facultyService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    private static final String FACULTY_NAME = "Гриффиндор";
+    private static final String FACULTY_COLOR = "красный";
+
+    @Test
+    void shouldCreateFacultySuccessfully() throws Exception {
+        Faculty faculty = new Faculty(FACULTY_NAME, FACULTY_COLOR);
+        Faculty savedFaculty = new Faculty(1L, FACULTY_NAME, FACULTY_COLOR);
+        when(facultyService.createFaculty(any(Faculty.class))).thenReturn(savedFaculty);
+        mockMvc.perform(MockMvcRequestBuilders.post("/faculty")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(faculty)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.name").value(FACULTY_NAME))
+                .andExpect(jsonPath("$.color").value(FACULTY_COLOR));
+    }
+
+    @Test
+    void shouldGetFacultyByIdSuccessfully() throws Exception {
+        Faculty faculty = new Faculty(1L, FACULTY_NAME, FACULTY_COLOR);
+        when(facultyService.getFacultyById(1L)).thenReturn(Optional.of(faculty));
+        mockMvc.perform(MockMvcRequestBuilders.get("/faculty/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.name").value(FACULTY_NAME))
+                .andExpect(jsonPath("$.color").value(FACULTY_COLOR));
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenGettingNonExistentFaculty() throws Exception {
+        when(facultyService.getFacultyById(anyLong())).thenReturn(Optional.empty());
+        mockMvc.perform(MockMvcRequestBuilders.get("/faculty/999"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldGetAllFacultiesSuccessfully() throws Exception {
+        List<Faculty> faculties = Arrays.asList(
+                new Faculty(1L, "Гриффиндор", "красный"),
+                new Faculty(2L, "Слизерин", "зеленый")
+        );
+        when(facultyService.getAllFaculties()).thenReturn(faculties);
+        mockMvc.perform(MockMvcRequestBuilders.get("/faculty"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(1L))
+                .andExpect(jsonPath("$[1].id").value(2L));
+    }
+
+    @Test
+    void shouldUpdateFacultySuccessfully() throws Exception {
+        Faculty updatedFaculty = new Faculty(1L, "Обновленный Факультет", "синий");
+        when(facultyService.updateFaculty(anyLong(), any(Faculty.class))).thenReturn(updatedFaculty);
+        mockMvc.perform(MockMvcRequestBuilders.put("/faculty/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updatedFaculty)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.name").value("Обновленный Факультет"))
+                .andExpect(jsonPath("$.color").value("синий"));
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenUpdatingNonExistentFaculty() throws Exception {
+        when(facultyService.updateFaculty(anyLong(), any(Faculty.class))).thenReturn(null);
+        mockMvc.perform(MockMvcRequestBuilders.put("/faculty/999")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new Faculty())))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldDeleteFacultySuccessfully() throws Exception {
+        when(facultyService.deleteFaculty(1L)).thenReturn(true);
+        mockMvc.perform(MockMvcRequestBuilders.delete("/faculty/1"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenDeletingNonExistentFaculty() throws Exception {
+        when(facultyService.deleteFaculty(anyLong())).thenReturn(false);
+        mockMvc.perform(MockMvcRequestBuilders.delete("/faculty/999"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldGetFacultiesByColorSuccessfully() throws Exception {
+        List<Faculty> faculties = Arrays.asList(
+                new Faculty(1L, "Гриффиндор", "красный"),
+                new Faculty(2L, "Другой красный факультет", "красный")
+        );
+        when(facultyService.getFacultiesByColor("красный")).thenReturn(faculties);
+        mockMvc.perform(MockMvcRequestBuilders.get("/faculty/color/красный"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].color").value("красный"))
+                .andExpect(jsonPath("$[1].color").value("красный"));
+    }
+
+    @Test
+    void shouldSearchFacultiesByNameOrColorSuccessfully() throws Exception {
+        List<Faculty> faculties = Arrays.asList(
+                new Faculty(1L, "Гриффиндор", "красный")
+        );
+        when(facultyService.getFacultiesByNameOrColor("гриф")).thenReturn(faculties);
+        mockMvc.perform(MockMvcRequestBuilders.get("/faculty/search")
+                        .param("search", "гриф"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].name").value("Гриффиндор"));
+    }
+
+    @Test
+    void shouldGetFacultyStudentsSuccessfully() throws Exception {
+        List<Student> students = Arrays.asList(
+                new Student(1L, "Студент 1", 18),
+                new Student(2L, "Студент 2", 19)
+        );
+        when(facultyService.getFacultyStudents(1L)).thenReturn(students);
+        mockMvc.perform(MockMvcRequestBuilders.get("/faculty/1/students"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(1L))
+                .andExpect(jsonPath("$[1].id").value(2L));
+    }
+}
+
+// Вспомогательные методы для тестов
+class TestUtils {
+    static void assertEquals(Object expected, Object actual) {
+        if (!Objects.equals(expected, actual)) {
+            throw new AssertionError("Expected: " + expected + ", but was: " + actual);
+        }
+    }
+
+    static void assertNotNull(Object object) {
+        if (object == null) {
+            throw new AssertionError("Object should not be null");
+        }
+    }
+
+    static void assertTrue(boolean condition) {
+        if (!condition) {
+            throw new AssertionError("Condition should be true");
+        }
+    }
+}
+
+// Статические импорты для методов assert
+import static ru.hogwarts.school.TestUtils.assertEquals;
+import static ru.hogwarts.school.TestUtils.assertNotNull;
+import static ru.hogwarts.school.TestUtils.assertTrue;
