@@ -2,6 +2,7 @@ package ru.hogwarts.school;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
@@ -9,18 +10,26 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import javax.persistence.*;
+import javax.annotation.PostConstruct;
 import java.util.*;
 import java.util.stream.Collectors;
 
 // ==================== ГЛАВНЫЙ КЛАСС ПРИЛОЖЕНИЯ ====================
 @SpringBootApplication
 public class HogwartsApplication {
+
     public static void main(String[] args) {
         SpringApplication.run(HogwartsApplication.class, args);
     }
+
+    // Бин для инициализации данных
+    @Bean
+    public DataInitializer dataInitializer(StudentRepository studentRepository, FacultyRepository facultyRepository) {
+        return new DataInitializer(studentRepository, facultyRepository);
+    }
 }
 
-// ==================== МОДЕЛИ ====================
+// ==================== МОДЕЛИ (ENTITY) ====================
 
 @Entity
 @Table(name = "students")
@@ -35,7 +44,7 @@ class Student {
     @Column(name = "age", nullable = false)
     private int age;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "faculty_id")
     private Faculty faculty;
 
@@ -54,46 +63,21 @@ class Student {
     }
 
     // Геттеры и сеттеры
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public int getAge() {
-        return age;
-    }
-
-    public void setAge(int age) {
-        this.age = age;
-    }
-
-    public Faculty getFaculty() {
-        return faculty;
-    }
-
-    public void setFaculty(Faculty faculty) {
-        this.faculty = faculty;
-    }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public int getAge() { return age; }
+    public void setAge(int age) { this.age = age; }
+    public Faculty getFaculty() { return faculty; }
+    public void setFaculty(Faculty faculty) { this.faculty = faculty; }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Student student = (Student) o;
-        return age == student.age &&
-                Objects.equals(id, student.id) &&
-                Objects.equals(name, student.name);
+        return age == student.age && Objects.equals(id, student.id) && Objects.equals(name, student.name);
     }
 
     @Override
@@ -121,7 +105,7 @@ class Faculty {
     @Column(name = "color", nullable = false)
     private String color;
 
-    @OneToMany(mappedBy = "faculty", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "faculty", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private List<Student> students = new ArrayList<>();
 
     // Конструкторы
@@ -139,45 +123,21 @@ class Faculty {
     }
 
     // Геттеры и сеттеры
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getColor() {
-        return color;
-    }
-
-    public void setColor(String color) {
-        this.color = color;
-    }
-
-    public List<Student> getStudents() {
-        return students;
-    }
-
-    public void setStudents(List<Student> students) {
-        this.students = students;
-    }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public String getColor() { return color; }
+    public void setColor(String color) { this.color = color; }
+    public List<Student> getStudents() { return students; }
+    public void setStudents(List<Student> students) { this.students = students; }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Faculty faculty = (Faculty) o;
-        return Objects.equals(id, faculty.id) &&
-                Objects.equals(name, faculty.name) &&
+        return Objects.equals(id, faculty.id) && Objects.equals(name, faculty.name) &&
                 Objects.equals(color, faculty.color);
     }
 
@@ -198,11 +158,13 @@ interface StudentRepository extends JpaRepository<Student, Long> {
     List<Student> findByAge(int age);
     List<Student> findByAgeBetween(int minAge, int maxAge);
     List<Student> findByFacultyId(Long facultyId);
+    List<Student> findByNameContainingIgnoreCase(String name);
 }
 
 interface FacultyRepository extends JpaRepository<Faculty, Long> {
     List<Faculty> findByColor(String color);
     List<Faculty> findByNameIgnoreCaseOrColorIgnoreCase(String name, String color);
+    List<Faculty> findByNameContainingIgnoreCase(String name);
 }
 
 // ==================== СЕРВИСЫ ====================
@@ -250,6 +212,33 @@ class StudentService {
     @Operation(summary = "Найти студентов по диапазону возрастов")
     public List<Student> getStudentsByAgeBetween(int minAge, int maxAge) {
         return studentRepository.findByAgeBetween(minAge, maxAge);
+    }
+
+    @Operation(summary = "Найти студентов по имени")
+    public List<Student> getStudentsByName(String name) {
+        return studentRepository.findByNameContainingIgnoreCase(name);
+    }
+
+    @Operation(summary = "Получить общее количество студентов")
+    public Long getTotalCount() {
+        return studentRepository.count();
+    }
+
+    @Operation(summary = "Получить средний возраст студентов")
+    public Double getAverageAge() {
+        return studentRepository.findAll().stream()
+                .mapToInt(Student::getAge)
+                .average()
+                .orElse(0.0);
+    }
+
+    @Operation(summary = "Получить последних 5 студентов")
+    public List<Student> getLastFiveStudents() {
+        List<Student> allStudents = studentRepository.findAll();
+        return allStudents.stream()
+                .sorted((s1, s2) -> Long.compare(s2.getId(), s1.getId()))
+                .limit(5)
+                .collect(Collectors.toList());
     }
 }
 
@@ -300,9 +289,21 @@ class FacultyService {
         return facultyRepository.findByNameIgnoreCaseOrColorIgnoreCase(searchTerm, searchTerm);
     }
 
+    @Operation(summary = "Найти факультет по имени")
+    public List<Faculty> getFacultiesByName(String name) {
+        return facultyRepository.findByNameContainingIgnoreCase(name);
+    }
+
     @Operation(summary = "Получить студентов факультета")
     public List<Student> getFacultyStudents(Long facultyId) {
         return studentRepository.findByFacultyId(facultyId);
+    }
+
+    @Operation(summary = "Получить самый длинный название факультета")
+    public Optional<String> getLongestFacultyName() {
+        return facultyRepository.findAll().stream()
+                .map(Faculty::getName)
+                .max(Comparator.comparing(String::length));
     }
 }
 
@@ -362,6 +363,30 @@ class StudentController {
     @Operation(summary = "Найти студентов по диапазону возрастов")
     public List<Student> getStudentsByAgeRange(@RequestParam int min, @RequestParam int max) {
         return studentService.getStudentsByAgeBetween(min, max);
+    }
+
+    @GetMapping("/name/{name}")
+    @Operation(summary = "Найти студентов по имени")
+    public List<Student> getStudentsByName(@PathVariable String name) {
+        return studentService.getStudentsByName(name);
+    }
+
+    @GetMapping("/count")
+    @Operation(summary = "Получить общее количество студентов")
+    public Long getTotalCount() {
+        return studentService.getTotalCount();
+    }
+
+    @GetMapping("/average-age")
+    @Operation(summary = "Получить средний возраст студентов")
+    public Double getAverageAge() {
+        return studentService.getAverageAge();
+    }
+
+    @GetMapping("/last-five")
+    @Operation(summary = "Получить последних 5 студентов")
+    public List<Student> getLastFiveStudents() {
+        return studentService.getLastFiveStudents();
     }
 }
 
@@ -426,11 +451,24 @@ class FacultyController {
     public List<Student> getFacultyStudents(@PathVariable Long id) {
         return facultyService.getFacultyStudents(id);
     }
+
+    @GetMapping("/name/{name}")
+    @Operation(summary = "Найти факультеты по имени")
+    public List<Faculty> getFacultiesByName(@PathVariable String name) {
+        return facultyService.getFacultiesByName(name);
+    }
+
+    @GetMapping("/longest-name")
+    @Operation(summary = "Получить самое длинное название факультета")
+    public ResponseEntity<String> getLongestFacultyName() {
+        Optional<String> longestName = facultyService.getLongestFacultyName();
+        return longestName.map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
 }
 
-// ==================== КОНФИГУРАЦИЯ ДЛЯ ИНИЦИАЛИЗАЦИИ ДАННЫХ ====================
+// ==================== ИНИЦИАЛИЗАЦИЯ ДАННЫХ ====================
 
-@Component
 class DataInitializer {
     private final StudentRepository studentRepository;
     private final FacultyRepository facultyRepository;
@@ -440,8 +478,12 @@ class DataInitializer {
         this.facultyRepository = facultyRepository;
     }
 
-    @javax.annotation.PostConstruct
+    @PostConstruct
     public void init() {
+        // Очистка существующих данных
+        studentRepository.deleteAll();
+        facultyRepository.deleteAll();
+
         // Создаем факультеты
         Faculty gryffindor = facultyRepository.save(new Faculty("Гриффиндор", "красный"));
         Faculty slytherin = facultyRepository.save(new Faculty("Слизерин", "зеленый"));
@@ -458,27 +500,40 @@ class DataInitializer {
                 new Student("Полумна Лавгуд", 16),
                 new Student("Седрик Диггори", 18),
                 new Student("Фред Уизли", 18),
-                new Student("Джордж Уизли", 18)
+                new Student("Джордж Уизли", 18),
+                new Student("Наташа Романова", 19),
+                new Student("Тони Старк", 20),
+                new Student("Брюс Беннер", 21)
         );
 
         // Сохраняем студентов
         students = studentRepository.saveAll(students);
 
         // Назначаем студентов на факультеты
-        students.get(0).setFaculty(gryffindor); // Гарри Поттер
-        students.get(1).setFaculty(gryffindor); // Гермиона
-        students.get(2).setFaculty(gryffindor); // Рон
-        students.get(3).setFaculty(slytherin);  // Драко
-        students.get(4).setFaculty(gryffindor); // Невилл
-        students.get(5).setFaculty(ravenclaw);  // Полумна
-        students.get(6).setFaculty(hufflepuff); // Седрик
-        students.get(7).setFaculty(gryffindor); // Фред
-        students.get(8).setFaculty(gryffindor); // Джордж
+        students.get(0).setFaculty(gryffindor);  // Гарри
+        students.get(1).setFaculty(gryffindor);  // Гермиона
+        students.get(2).setFaculty(gryffindor);  // Рон
+        students.get(3).setFaculty(slytherin);   // Драко
+        students.get(4).setFaculty(gryffindor);  // Невилл
+        students.get(5).setFaculty(ravenclaw);   // Полумна
+        students.get(6).setFaculty(hufflepuff);  // Седрик
+        students.get(7).setFaculty(gryffindor);  // Фред
+        students.get(8).setFaculty(gryffindor);  // Джордж
+        students.get(9).setFaculty(slytherin);   // Наташа
+        students.get(10).setFaculty(ravenclaw);  // Тони
+        students.get(11).setFaculty(hufflepuff); // Брюс
 
         studentRepository.saveAll(students);
 
         System.out.println("=== ДАННЫЕ УСПЕШНО ИНИЦИАЛИЗИРОВАНЫ ===");
         System.out.println("Создано факультетов: " + facultyRepository.count());
         System.out.println("Создано студентов: " + studentRepository.count());
+
+        // Тестовый вывод
+        System.out.println("Факультеты:");
+        facultyRepository.findAll().forEach(System.out::println);
+
+        System.out.println("Студенты:");
+        studentRepository.findAll().forEach(System.out::println);
     }
 }
