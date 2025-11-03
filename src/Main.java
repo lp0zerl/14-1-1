@@ -1,179 +1,359 @@
-public class Main {
+package ru.hogwarts.school;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.*;
+import javax.persistence.*;
+import java.util.*;
+
+// ==================== ГЛАВНЫЙ КЛАСС ПРИЛОЖЕНИЯ ====================
+@SpringBootApplication
+public class HogwartsApplication {
     public static void main(String[] args) {
-        Product apple = new SimpleProduct("Apple", 100);
-        Product banana = new DiscountedProduct("Banana", 200, 20);
-        Product chocolate = new FixPriceProduct("Chocolate");
-        Product milk = new DiscountedProduct("Milk", 150, 10);
-        Product tea = new FixPriceProduct("Tea");
-
-        ProductBasket basket = new ProductBasket();
-
-        basket.addProduct(apple);
-        basket.addProduct(banana);
-        basket.addProduct(chocolate);
-        basket.addProduct(milk);
-        basket.addProduct(tea);
-
-        Product extra = new SimpleProduct("Extra", 99);
-        basket.addProduct(extra);
-
-        basket.printBasket();
-
-        System.out.println("Общая стоимость: " + basket.getTotalPrice());
-        System.out.println("Есть ли Milk? " + basket.hasProduct("Milk"));
-        System.out.println("Есть ли Coffee? " + basket.hasProduct("Coffee"));
-
-        basket.clear();
-        basket.printBasket();
+        SpringApplication.run(HogwartsApplication.class, args);
     }
 }
 
-abstract class Product {
-    private final String name;
+// ==================== МОДЕЛИ ====================
 
-    public Product(String name) {
+@Entity
+@Table(name = "students")
+class Student {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "name", nullable = false)
+    private String name;
+
+    @Column(name = "age", nullable = false)
+    private int age;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "faculty_id")
+    private Faculty faculty;
+
+    public Student() {}
+
+    public Student(String name, int age) {
         this.name = name;
+        this.age = age;
     }
 
-    public abstract int getPrice();
-    public abstract boolean isSpecial();
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
 
     public String getName() {
         return name;
     }
 
-    @Override
-    public abstract String toString();
-}
+    public void setName(String name) {
+        this.name = name;
+    }
 
-class SimpleProduct extends Product {
-    private final int price;
+    public int getAge() {
+        return age;
+    }
 
-    public SimpleProduct(String name, int price) {
-        super(name);
-        this.price = price;
+    public void setAge(int age) {
+        this.age = age;
+    }
+
+    public Faculty getFaculty() {
+        return faculty;
+    }
+
+    public void setFaculty(Faculty faculty) {
+        this.faculty = faculty;
     }
 
     @Override
-    public int getPrice() {
-        return price;
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Student student = (Student) o;
+        return age == student.age && Objects.equals(id, student.id) && Objects.equals(name, student.name);
     }
 
     @Override
-    public boolean isSpecial() {
-        return false;
-    }
-
-    @Override
-    public String toString() {
-        return getName() + ": " + getPrice();
-    }
-}
-
-class DiscountedProduct extends Product {
-    private final int basePrice;
-    private final int discountPercent;
-
-    public DiscountedProduct(String name, int basePrice, int discountPercent) {
-        super(name);
-        this.basePrice = basePrice;
-        this.discountPercent = discountPercent;
-    }
-
-    @Override
-    public int getPrice() {
-        return basePrice * (100 - discountPercent) / 100;
-    }
-
-    @Override
-    public boolean isSpecial() {
-        return true;
+    public int hashCode() {
+        return Objects.hash(id, name, age);
     }
 
     @Override
     public String toString() {
-        return getName() + ": " + getPrice() + " (" + discountPercent + "%)";
+        return "Student{id=" + id + ", name='" + name + "', age=" + age + '}';
     }
 }
 
-class FixPriceProduct extends Product {
-    private static final int FIXED_PRICE = 300;
+@Entity
+@Table(name = "faculties")
+class Faculty {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-    public FixPriceProduct(String name) {
-        super(name);
+    @Column(name = "name", nullable = false, unique = true)
+    private String name;
+
+    @Column(name = "color", nullable = false)
+    private String color;
+
+    @OneToMany(mappedBy = "faculty", fetch = FetchType.LAZY)
+    private List<Student> students = new ArrayList<>();
+
+    public Faculty() {}
+
+    public Faculty(String name, String color) {
+        this.name = name;
+        this.color = color;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    public void setColor(String color) {
+        this.color = color;
+    }
+
+    public List<Student> getStudents() {
+        return students;
+    }
+
+    public void setStudents(List<Student> students) {
+        this.students = students;
     }
 
     @Override
-    public int getPrice() {
-        return FIXED_PRICE;
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Faculty faculty = (Faculty) o;
+        return Objects.equals(id, faculty.id) && Objects.equals(name, faculty.name) && Objects.equals(color, faculty.color);
     }
 
     @Override
-    public boolean isSpecial() {
-        return true;
+    public int hashCode() {
+        return Objects.hash(id, name, color);
     }
 
     @Override
     public String toString() {
-        return getName() + ": Фиксированная цена " + FIXED_PRICE;
+        return "Faculty{id=" + id + ", name='" + name + "', color='" + color + "'}";
     }
 }
 
-class ProductBasket {
-    private final Product[] products = new Product[5];
-    private int size = 0;
+// ==================== РЕПОЗИТОРИИ ====================
 
-    public void addProduct(Product product) {
-        if (size >= products.length) {
-            System.out.println("Невозможно добавить продукт");
-            return;
-        }
-        products[size++] = product;
+interface StudentRepository extends JpaRepository<Student, Long> {
+    List<Student> findByAgeBetween(int minAge, int maxAge);
+    List<Student> findByFacultyId(Long facultyId);
+}
+
+interface FacultyRepository extends JpaRepository<Faculty, Long> {
+    List<Faculty> findByNameIgnoreCaseOrColorIgnoreCase(String name, String color);
+}
+
+// ==================== СЕРВИСЫ ====================
+
+@Service
+class StudentService {
+    private final StudentRepository studentRepository;
+
+    public StudentService(StudentRepository studentRepository) {
+        this.studentRepository = studentRepository;
     }
 
-    public int getTotalPrice() {
-        int sum = 0;
-        for (Product product : products) {
-            if (product != null) {
-                sum += product.getPrice();
-            }
-        }
-        return sum;
+    public Student createStudent(Student student) {
+        return studentRepository.save(student);
     }
 
-    public void printBasket() {
-        if (size == 0) {
-            System.out.println("В корзине пусто");
-            return;
-        }
-
-        int specialCount = 0;
-        for (Product product : products) {
-            if (product != null) {
-                System.out.println(product.toString());
-                if (product.isSpecial()) {
-                    specialCount++;
-                }
-            }
-        }
-
-        System.out.println("Итого: " + getTotalPrice());
-        System.out.println("Специальных товаров: " + specialCount);
+    public Optional<Student> getStudentById(Long id) {
+        return studentRepository.findById(id);
     }
 
-    public boolean hasProduct(String name) {
-        for (Product product : products) {
-            if (product != null && product.getName().equalsIgnoreCase(name)) {
-                return true;
-            }
-        }
-        return false;
+    public List<Student> getAllStudents() {
+        return studentRepository.findAll();
     }
 
-    public void clear() {
-        for (int i = 0; i < products.length; i++) {
-            products[i] = null;
-        }
-        size = 0;
+    public Student updateStudent(Long id, Student student) {
+        student.setId(id);
+        return studentRepository.save(student);
+    }
+
+    public void deleteStudent(Long id) {
+        studentRepository.deleteById(id);
+    }
+
+    public List<Student> getStudentsByAgeBetween(int minAge, int maxAge) {
+        return studentRepository.findByAgeBetween(minAge, maxAge);
+    }
+
+    public List<Student> getStudentsByFacultyId(Long facultyId) {
+        return studentRepository.findByFacultyId(facultyId);
+    }
+}
+
+@Service
+class FacultyService {
+    private final FacultyRepository facultyRepository;
+    private final StudentRepository studentRepository;
+
+    public FacultyService(FacultyRepository facultyRepository, StudentRepository studentRepository) {
+        this.facultyRepository = facultyRepository;
+        this.studentRepository = studentRepository;
+    }
+
+    public Faculty createFaculty(Faculty faculty) {
+        return facultyRepository.save(faculty);
+    }
+
+    public Optional<Faculty> getFacultyById(Long id) {
+        return facultyRepository.findById(id);
+    }
+
+    public List<Faculty> getAllFaculties() {
+        return facultyRepository.findAll();
+    }
+
+    public Faculty updateFaculty(Long id, Faculty faculty) {
+        faculty.setId(id);
+        return facultyRepository.save(faculty);
+    }
+
+    public void deleteFaculty(Long id) {
+        facultyRepository.deleteById(id);
+    }
+
+    public List<Faculty> getFacultiesByNameOrColor(String searchTerm) {
+        return facultyRepository.findByNameIgnoreCaseOrColorIgnoreCase(searchTerm, searchTerm);
+    }
+
+    public List<Student> getFacultyStudents(Long facultyId) {
+        return studentRepository.findByFacultyId(facultyId);
+    }
+}
+
+// ==================== КОНТРОЛЛЕРЫ ====================
+
+@RestController
+@RequestMapping("/student")
+class StudentController {
+    private final StudentService studentService;
+
+    public StudentController(StudentService studentService) {
+        this.studentService = studentService;
+    }
+
+    @PostMapping
+    public Student createStudent(@RequestBody Student student) {
+        return studentService.createStudent(student);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Student> getStudent(@PathVariable Long id) {
+        Optional<Student> student = studentService.getStudentById(id);
+        return student.map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping
+    public List<Student> getAllStudents() {
+        return studentService.getAllStudents();
+    }
+
+    @PutMapping("/{id}")
+    public Student updateStudent(@PathVariable Long id, @RequestBody Student student) {
+        return studentService.updateStudent(id, student);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteStudent(@PathVariable Long id) {
+        studentService.deleteStudent(id);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/age-between")
+    public List<Student> getStudentsByAgeRange(@RequestParam int min, @RequestParam int max) {
+        return studentService.getStudentsByAgeBetween(min, max);
+    }
+
+    @GetMapping("/{id}/faculty")
+    public ResponseEntity<Faculty> getStudentFaculty(@PathVariable Long id) {
+        Optional<Student> student = studentService.getStudentById(id);
+        return student.map(s -> ResponseEntity.ok(s.getFaculty()))
+                .orElse(ResponseEntity.notFound().build());
+    }
+}
+
+@RestController
+@RequestMapping("/faculty")
+class FacultyController {
+    private final FacultyService facultyService;
+
+    public FacultyController(FacultyService facultyService) {
+        this.facultyService = facultyService;
+    }
+
+    @PostMapping
+    public Faculty createFaculty(@RequestBody Faculty faculty) {
+        return facultyService.createFaculty(faculty);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Faculty> getFaculty(@PathVariable Long id) {
+        Optional<Faculty> faculty = facultyService.getFacultyById(id);
+        return faculty.map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping
+    public List<Faculty> getAllFaculties() {
+        return facultyService.getAllFaculties();
+    }
+
+    @PutMapping("/{id}")
+    public Faculty updateFaculty(@PathVariable Long id, @RequestBody Faculty faculty) {
+        return facultyService.updateFaculty(id, faculty);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteFaculty(@PathVariable Long id) {
+        facultyService.deleteFaculty(id);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/search")
+    public List<Faculty> getFacultiesByNameOrColor(@RequestParam String search) {
+        return facultyService.getFacultiesByNameOrColor(search);
+    }
+
+    @GetMapping("/{id}/students")
+    public List<Student> getFacultyStudents(@PathVariable Long id) {
+        return facultyService.getFacultyStudents(id);
     }
 }
