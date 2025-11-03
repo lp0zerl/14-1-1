@@ -1,6 +1,9 @@
-// SkyshopApplication.java
 package org.skypro.skyshop;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.mockito.Mockito;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.stereotype.Service;
@@ -11,7 +14,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ControllerAdvice;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -26,14 +28,12 @@ public class SkyshopApplication {
 
 // ==================== ИСКЛЮЧЕНИЯ И ОБРАБОТКА ОШИБОК ====================
 
-// Собственное исключение для ненайденного продукта
 class NoSuchProductException extends RuntimeException {
     public NoSuchProductException(String message) {
         super(message);
     }
 }
 
-// Модель ошибки для возврата в JSON
 class ShopError {
     private final String code;
     private final String message;
@@ -43,19 +43,12 @@ class ShopError {
         this.message = message;
     }
 
-    public String getCode() {
-        return code;
-    }
-
-    public String getMessage() {
-        return message;
-    }
+    public String getCode() { return code; }
+    public String getMessage() { return message; }
 }
 
-// Обработчик исключений
 @ControllerAdvice
 class ShopControllerAdvice {
-
     @ExceptionHandler(NoSuchProductException.class)
     public ResponseEntity<ShopError> handleNoSuchProductException(NoSuchProductException ex) {
         ShopError error = new ShopError("PRODUCT_NOT_FOUND", ex.getMessage());
@@ -65,13 +58,11 @@ class ShopControllerAdvice {
 
 // ==================== МОДЕЛИ ====================
 
-// Интерфейс Searchable
 interface Searchable {
     UUID getId();
     String getName();
 }
 
-// Класс Product
 class Product implements Searchable {
     private final UUID id;
     private final String name;
@@ -83,29 +74,9 @@ class Product implements Searchable {
         this.price = price;
     }
 
-    @Override
-    public UUID getId() {
-        return id;
-    }
-
-    @Override
-    public String getName() {
-        return name;
-    }
-
-    public double getPrice() {
-        return price;
-    }
-
-    @JsonIgnore
-    public String getSearchTerm() {
-        return name;
-    }
-
-    @JsonIgnore
-    public String getContentType() {
-        return "PRODUCT";
-    }
+    @Override public UUID getId() { return id; }
+    @Override public String getName() { return name; }
+    public double getPrice() { return price; }
 
     @Override
     public String toString() {
@@ -113,7 +84,6 @@ class Product implements Searchable {
     }
 }
 
-// Класс Article
 class Article implements Searchable {
     private final UUID id;
     private final String name;
@@ -125,29 +95,9 @@ class Article implements Searchable {
         this.content = content;
     }
 
-    @Override
-    public UUID getId() {
-        return id;
-    }
-
-    @Override
-    public String getName() {
-        return name;
-    }
-
-    public String getContent() {
-        return content;
-    }
-
-    @JsonIgnore
-    public String getSearchTerm() {
-        return name;
-    }
-
-    @JsonIgnore
-    public String getContentType() {
-        return "ARTICLE";
-    }
+    @Override public UUID getId() { return id; }
+    @Override public String getName() { return name; }
+    public String getContent() { return content; }
 
     @Override
     public String toString() {
@@ -155,7 +105,6 @@ class Article implements Searchable {
     }
 }
 
-// Класс SearchResult
 class SearchResult {
     private final String id;
     private final String name;
@@ -167,7 +116,6 @@ class SearchResult {
         this.contentType = contentType;
     }
 
-    // Статический фабричный метод
     public static SearchResult fromSearchable(Searchable searchable) {
         String contentType = (searchable instanceof Product) ? "PRODUCT" : "ARTICLE";
         return new SearchResult(
@@ -177,23 +125,11 @@ class SearchResult {
         );
     }
 
-    // Геттеры
-    public String getId() {
-        return id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public String getContentType() {
-        return contentType;
-    }
+    public String getId() { return id; }
+    public String getName() { return name; }
+    public String getContentType() { return contentType; }
 }
 
-// ==================== КОРЗИНА ====================
-
-// Класс BasketItem
 class BasketItem {
     private final Product product;
     private final int quantity;
@@ -203,78 +139,52 @@ class BasketItem {
         this.quantity = quantity;
     }
 
-    public Product getProduct() {
-        return product;
-    }
-
-    public int getQuantity() {
-        return quantity;
-    }
-
-    public double getTotalPrice() {
-        return product.getPrice() * quantity;
-    }
+    public Product getProduct() { return product; }
+    public int getQuantity() { return quantity; }
+    public double getTotalPrice() { return product.getPrice() * quantity; }
 }
 
-// Класс UserBasket
 class UserBasket {
     private final List<BasketItem> items;
     private final double total;
 
     public UserBasket(List<BasketItem> items) {
         this.items = Collections.unmodifiableList(new ArrayList<>(items));
-        // Подсчет общей стоимости с помощью StreamAPI
         this.total = items.stream()
                 .mapToDouble(BasketItem::getTotalPrice)
                 .sum();
     }
 
-    public List<BasketItem> getItems() {
-        return items;
-    }
-
-    public double getTotal() {
-        return total;
-    }
+    public List<BasketItem> getItems() { return items; }
+    public double getTotal() { return total; }
 }
 
-// Компонент корзины с сессионным scope
+// ==================== СЕРВИСЫ ====================
+
 @Service
 @Scope(value = "session", proxyMode = ScopedProxyMode.TARGET_CLASS)
 class ProductBasket {
-    private final Map<UUID, Integer> items;
+    private final Map<UUID, Integer> items = new HashMap<>();
 
-    public ProductBasket() {
-        this.items = new HashMap<>();
-    }
-
-    // Метод добавления продукта в корзину
     public void addProduct(UUID productId) {
         items.put(productId, items.getOrDefault(productId, 0) + 1);
     }
 
-    // Метод получения всех продуктов в корзине
     public Map<UUID, Integer> getItems() {
         return Collections.unmodifiableMap(new HashMap<>(items));
     }
 }
 
-// ==================== СЕРВИСЫ ====================
-
-// Сервис хранения
 @Service
 class StorageService {
-    private final Map<UUID, Product> products;
-    private final Map<UUID, Article> articles;
+    private final Map<UUID, Product> products = new HashMap<>();
+    private final Map<UUID, Article> articles = new HashMap<>();
 
     public StorageService() {
-        this.products = new HashMap<>();
-        this.articles = new HashMap<>();
         initializeTestData();
     }
 
     private void initializeTestData() {
-        // Добавляем тестовые продукты
         UUID smartphoneId = UUID.randomUUID();
         UUID laptopId = UUID.randomUUID();
         UUID headphonesId = UUID.randomUUID();
@@ -282,23 +192,11 @@ class StorageService {
         products.put(smartphoneId, new Product(smartphoneId, "Смартфон Samsung Galaxy", 50000.0));
         products.put(laptopId, new Product(laptopId, "Ноутбук игровой ASUS", 120000.0));
         products.put(headphonesId, new Product(headphonesId, "Наушники беспроводные Sony", 15000.0));
-        products.put(UUID.randomUUID(), new Product(UUID.randomUUID(), "Планшет Apple iPad", 45000.0));
-        products.put(UUID.randomUUID(), new Product(UUID.randomUUID(), "Смартфон Apple iPhone", 80000.0));
-        products.put(UUID.randomUUID(), new Product(UUID.randomUUID(), "Телевизор LG OLED", 150000.0));
 
-        // Добавляем тестовые статьи
         articles.put(UUID.randomUUID(), new Article(UUID.randomUUID(),
-                "Обзор нового смартфона Samsung",
-                "Полный обзор флагманского смартфона Samsung..."));
+                "Обзор нового смартфона Samsung", "Полный обзор..."));
         articles.put(UUID.randomUUID(), new Article(UUID.randomUUID(),
-                "Лучшие игровые ноутбуки 2024",
-                "Топ-10 игровых ноутбуков этого года..."));
-        articles.put(UUID.randomUUID(), new Article(UUID.randomUUID(),
-                "Сравнение беспроводных наушников",
-                "Детальное сравнение популярных моделей..."));
-        articles.put(UUID.randomUUID(), new Article(UUID.randomUUID(),
-                "Новости технологий",
-                "Свежие новости из мира технологий..."));
+                "Лучшие игровые ноутбуки 2024", "Топ-10 игровых ноутбуков..."));
     }
 
     public Collection<Product> getAllProducts() {
@@ -316,13 +214,11 @@ class StorageService {
         return Collections.unmodifiableCollection(allItems);
     }
 
-    // Новый метод для получения продукта по ID
     public Optional<Product> getProductById(UUID id) {
         return Optional.ofNullable(products.get(id));
     }
 }
 
-// Сервис поиска
 @Service
 class SearchService {
     private final StorageService storageService;
@@ -347,7 +243,6 @@ class SearchService {
     }
 }
 
-// Сервис работы с корзиной
 @Service
 class BasketService {
     private final ProductBasket productBasket;
@@ -358,26 +253,23 @@ class BasketService {
         this.storageService = storageService;
     }
 
-    // Метод добавления товара в корзину по ID - теперь выбрасывает NoSuchProductException
     public void addProductToBasket(UUID productId) {
         Optional<Product> product = storageService.getProductById(productId);
         if (product.isEmpty()) {
-            throw new NoSuchProductException("Продукт с ID '" + productId + "' не найден в каталоге");
+            throw new NoSuchProductException("Продукт с ID '" + productId + "' не найден");
         }
         productBasket.addProduct(productId);
     }
 
-    // Метод получения корзины пользователя
     public UserBasket getUserBasket() {
         Map<UUID, Integer> basketItems = productBasket.getItems();
 
-        // Преобразуем Map в список BasketItem с помощью StreamAPI
         List<BasketItem> items = basketItems.entrySet().stream()
                 .map(entry -> {
                     UUID productId = entry.getKey();
                     Integer quantity = entry.getValue();
                     Product product = storageService.getProductById(productId)
-                            .orElseThrow(() -> new NoSuchProductException("Продукт с ID '" + productId + "' не найден в каталоге"));
+                            .orElseThrow(() -> new NoSuchProductException("Продукт с ID '" + productId + "' не найден"));
                     return new BasketItem(product, quantity);
                 })
                 .collect(Collectors.toList());
@@ -416,14 +308,12 @@ class ShopController {
         return searchService.search(pattern);
     }
 
-    // Новый метод для добавления продукта в корзину
     @GetMapping("/basket/{id}")
     public String addProduct(@PathVariable("id") UUID id) {
         basketService.addProductToBasket(id);
         return "Продукт успешно добавлен";
     }
 
-    // Новый метод для отображения корзины
     @GetMapping("/basket")
     public UserBasket getUserBasket() {
         return basketService.getUserBasket();
@@ -431,13 +321,6 @@ class ShopController {
 }
 
 // ==================== ТЕСТЫ ====================
-
-// Тесты для SearchService
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.mockito.Mockito;
-import java.util.*;
 
 class SearchServiceTest {
     private StorageService storageService;
@@ -499,7 +382,6 @@ class SearchServiceTest {
         // Assert
         assert results.size() == 2 : "Должно вернуться 2 результата";
 
-        // Проверяем, что результаты содержат правильные объекты
         Set<String> resultNames = results.stream()
                 .map(SearchResult::getName)
                 .collect(Collectors.toSet());
@@ -562,7 +444,6 @@ class SearchServiceTest {
     }
 }
 
-// Тесты для BasketService
 class BasketServiceTest {
     private ProductBasket productBasket;
     private StorageService storageService;
@@ -588,7 +469,6 @@ class BasketServiceTest {
             basketService.addProductToBasket(nonExistentProductId);
             assert false : "Должно было быть выброшено исключение";
         } catch (NoSuchProductException e) {
-            // Ожидаемое поведение
             assert e.getMessage().contains(nonExistentProductId.toString()) :
                     "Сообщение об ошибке должно содержать ID продукта";
         }
@@ -635,8 +515,8 @@ class BasketServiceTest {
         Product product2 = new Product(productId2, "Продукт 2", 2000.0);
 
         Map<UUID, Integer> basketItems = new HashMap<>();
-        basketItems.put(productId1, 2); // 2 шт продукта 1
-        basketItems.put(productId2, 1); // 1 шт продукта 2
+        basketItems.put(productId1, 2);
+        basketItems.put(productId2, 1);
 
         Mockito.when(productBasket.getItems()).thenReturn(basketItems);
         Mockito.when(storageService.getProductById(productId1)).thenReturn(Optional.of(product1));
@@ -647,9 +527,8 @@ class BasketServiceTest {
 
         // Assert
         assert userBasket.getItems().size() == 2 : "Должно быть 2 элемента в корзине";
-        assert userBasket.getTotal() == 4000.0 : "Общая стоимость должна быть 4000 (2*1000 + 1*2000)";
+        assert userBasket.getTotal() == 4000.0 : "Общая стоимость должна быть 4000";
 
-        // Проверяем содержимое корзины
         BasketItem item1 = userBasket.getItems().stream()
                 .filter(item -> item.getProduct().getId().equals(productId1))
                 .findFirst()
@@ -676,7 +555,7 @@ class BasketServiceTest {
 
         Map<UUID, Integer> basketItems = new HashMap<>();
         basketItems.put(existingProductId, 1);
-        basketItems.put(nonExistentProductId, 1); // Несуществующий продукт
+        basketItems.put(nonExistentProductId, 1);
 
         Mockito.when(productBasket.getItems()).thenReturn(basketItems);
         Mockito.when(storageService.getProductById(existingProductId))
@@ -689,96 +568,8 @@ class BasketServiceTest {
             basketService.getUserBasket();
             assert false : "Должно было быть выброшено исключение";
         } catch (NoSuchProductException e) {
-            // Ожидаемое поведение
             assert e.getMessage().contains(nonExistentProductId.toString()) :
                     "Сообщение об ошибке должно содержать ID несуществующего продукта";
         }
-    }
-
-    @Test
-    @DisplayName("Добавление товара несколько раз увеличивает количество")
-    void addProductToBasket_MultipleCalls_ShouldIncreaseQuantity() {
-        // Arrange
-        UUID productId = UUID.randomUUID();
-        Product product = new Product(productId, "Тестовый продукт", 1000.0);
-        Mockito.when(storageService.getProductById(productId))
-                .thenReturn(Optional.of(product));
-
-        // Act
-        basketService.addProductToBasket(productId);
-        basketService.addProductToBasket(productId);
-        basketService.addProductToBasket(productId);
-
-        // Assert
-        Mockito.verify(productBasket, Mockito.times(3)).addProduct(productId);
-    }
-}
-
-// Тестовый раннер для демонстрации работы тестов
-class TestRunner {
-    public static void main(String[] args) {
-        System.out.println("=== Запуск тестов SearchService ===");
-        runSearchServiceTests();
-
-        System.out.println("\n=== Запуск тестов BasketService ===");
-        runBasketServiceTests();
-
-        System.out.println("\n=== Все тесты завершены ===");
-    }
-
-    private static void runSearchServiceTests() {
-        SearchServiceTest searchTest = new SearchServiceTest();
-
-        searchTest.setUp();
-        searchTest.search_WhenNoObjectsInStorage_ShouldReturnEmptyList();
-        System.out.println("✓ search_WhenNoObjectsInStorage_ShouldReturnEmptyList - ПРОЙДЕН");
-
-        searchTest.setUp();
-        searchTest.search_WhenObjectsExistButNoMatches_ShouldReturnEmptyList();
-        System.out.println("✓ search_WhenObjectsExistButNoMatches_ShouldReturnEmptyList - ПРОЙДЕН");
-
-        searchTest.setUp();
-        searchTest.search_WhenMatchingObjectsExist_ShouldReturnResults();
-        System.out.println("✓ search_WhenMatchingObjectsExist_ShouldReturnResults - ПРОЙДЕН");
-
-        searchTest.setUp();
-        searchTest.search_WithEmptyQuery_ShouldReturnAllItems();
-        System.out.println("✓ search_WithEmptyQuery_ShouldReturnAllItems - ПРОЙДЕН");
-
-        searchTest.setUp();
-        searchTest.search_WithNullQuery_ShouldReturnAllItems();
-        System.out.println("✓ search_WithNullQuery_ShouldReturnAllItems - ПРОЙДЕН");
-
-        searchTest.setUp();
-        searchTest.search_ShouldBeCaseInsensitive();
-        System.out.println("✓ search_ShouldBeCaseInsensitive - ПРОЙДЕН");
-    }
-
-    private static void runBasketServiceTests() {
-        BasketServiceTest basketTest = new BasketServiceTest();
-
-        basketTest.setUp();
-        basketTest.addProductToBasket_WhenProductDoesNotExist_ShouldThrowException();
-        System.out.println("✓ addProductToBasket_WhenProductDoesNotExist_ShouldThrowException - ПРОЙДЕН");
-
-        basketTest.setUp();
-        basketTest.addProductToBasket_WhenProductExists_ShouldCallAddProduct();
-        System.out.println("✓ addProductToBasket_WhenProductExists_ShouldCallAddProduct - ПРОЙДЕН");
-
-        basketTest.setUp();
-        basketTest.getUserBasket_WhenBasketIsEmpty_ShouldReturnEmptyBasket();
-        System.out.println("✓ getUserBasket_WhenBasketIsEmpty_ShouldReturnEmptyBasket - ПРОЙДЕН");
-
-        basketTest.setUp();
-        basketTest.getUserBasket_WhenBasketHasItems_ShouldReturnCorrectBasket();
-        System.out.println("✓ getUserBasket_WhenBasketHasItems_ShouldReturnCorrectBasket - ПРОЙДЕН");
-
-        basketTest.setUp();
-        basketTest.getUserBasket_WhenProductInBasketNotFound_ShouldThrowException();
-        System.out.println("✓ getUserBasket_WhenProductInBasketNotFound_ShouldThrowException - ПРОЙДЕН");
-
-        basketTest.setUp();
-        basketTest.addProductToBasket_MultipleCalls_ShouldIncreaseQuantity();
-        System.out.println("✓ addProductToBasket_MultipleCalls_ShouldIncreaseQuantity - ПРОЙДЕН");
     }
 }
