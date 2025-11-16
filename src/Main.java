@@ -1,250 +1,362 @@
-package org.skypro.skyshop;
+// src/test/java/ru/example/service/SearchServiceTest.java
+package ru.example.service;
 
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.mockito.Mockito;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.context.annotation.Scope;
-import org.springframework.context.annotation.ScopedProxyMode;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import ru.example.model.Product;
+import ru.example.storage.StorageService;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class SearchServiceTest {
+
+    @Mock
+    private StorageService storageService;
+
+    private SearchService searchService;
+
+    @BeforeEach
+    void setUp() {
+        searchService = new SearchService(storageService);
+    }
+
+    @Test
+    void search_WhenNoProductsInStorage_ShouldReturnEmptyList() {
+        // Arrange
+        when(storageService.getAllProducts()).thenReturn(Collections.emptyList());
+
+        // Act
+        List<Product> result = searchService.search("laptop");
+
+        // Assert
+        assertTrue(result.isEmpty());
+        verify(storageService, times(1)).getAllProducts();
+    }
+
+    @Test
+    void search_WhenProductsExistButNoMatch_ShouldReturnEmptyList() {
+        // Arrange
+        List<Product> products = Arrays.asList(
+                createProduct("1", "phone", 500.0),
+                createProduct("2", "tablet", 300.0)
+        );
+        when(storageService.getAllProducts()).thenReturn(products);
+
+        // Act
+        List<Product> result = searchService.search("laptop");
+
+        // Assert
+        assertTrue(result.isEmpty());
+        verify(storageService, times(1)).getAllProducts();
+    }
+
+    @Test
+    void search_WhenMatchingProductExists_ShouldReturnFilteredList() {
+        // Arrange
+        Product laptop1 = createProduct("1", "gaming laptop", 1000.0);
+        Product laptop2 = createProduct("2", "ultrabook laptop", 1200.0);
+        Product phone = createProduct("3", "smartphone", 500.0);
+
+        List<Product> products = Arrays.asList(laptop1, laptop2, phone);
+        when(storageService.getAllProducts()).thenReturn(products);
+
+        // Act
+        List<Product> result = searchService.search("laptop");
+
+        // Assert
+        assertEquals(2, result.size());
+        assertTrue(result.contains(laptop1));
+        assertTrue(result.contains(laptop2));
+        assertFalse(result.contains(phone));
+        verify(storageService, times(1)).getAllProducts();
+    }
+
+    @Test
+    void search_WhenSearchTermIsEmpty_ShouldReturnAllProducts() {
+        // Arrange
+        List<Product> products = Arrays.asList(
+                createProduct("1", "laptop", 1000.0),
+                createProduct("2", "phone", 500.0)
+        );
+        when(storageService.getAllProducts()).thenReturn(products);
+
+        // Act
+        List<Product> result = searchService.search("");
+
+        // Assert
+        assertEquals(2, result.size());
+        verify(storageService, times(1)).getAllProducts();
+    }
+
+    @Test
+    void search_WhenSearchTermIsNull_ShouldReturnAllProducts() {
+        // Arrange
+        List<Product> products = Arrays.asList(
+                createProduct("1", "laptop", 1000.0),
+                createProduct("2", "phone", 500.0)
+        );
+        when(storageService.getAllProducts()).thenReturn(products);
+
+        // Act
+        List<Product> result = searchService.search(null);
+
+        // Assert
+        assertEquals(2, result.size());
+        verify(storageService, times(1)).getAllProducts();
+    }
+
+    @Test
+    void search_ShouldBeCaseInsensitive() {
+        // Arrange
+        Product laptop = createProduct("1", "LAPTOP Gaming", 1000.0);
+        Product phone = createProduct("2", "phone", 500.0);
+
+        List<Product> products = Arrays.asList(laptop, phone);
+        when(storageService.getAllProducts()).thenReturn(products);
+
+        // Act
+        List<Product> result = searchService.search("laptop");
+
+        // Assert
+        assertEquals(1, result.size());
+        assertEquals(laptop, result.get(0));
+    }
+
+    // Вспомогательный метод для создания продуктов
+    private Product createProduct(String id, String name, double price) {
+        Product product = new Product();
+        product.setId(id);
+        product.setName(name);
+        product.setPrice(price);
+        return product;
+    }
+}
+
+// src/test/java/ru/example/service/BasketServiceTest.java
+package ru.example.service;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import ru.example.model.Product;
+import ru.example.model.ProductBasket;
+import ru.example.storage.StorageService;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+        import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class BasketServiceTest {
+
+    @Mock
+    private ProductBasket productBasket;
+
+    @Mock
+    private StorageService storageService;
+
+    private BasketService basketService;
+
+    @BeforeEach
+    void setUp() {
+        basketService = new BasketService(productBasket, storageService);
+    }
+
+    @Test
+    void addProduct_WhenProductDoesNotExist_ShouldThrowException() {
+        // Arrange
+        String productId = "non-existent-id";
+        when(storageService.getProductById(productId)).thenReturn(Optional.empty());
+
+        // Act & Assert
+        assertThrows(IllegalArgumentException.class,
+                () -> basketService.addProduct(productId));
+
+        verify(storageService, times(1)).getProductById(productId);
+        verify(productBasket, never()).addProduct(any(Product.class));
+    }
+
+    @Test
+    void addProduct_WhenProductExists_ShouldCallAddProductOnBasket() {
+        // Arrange
+        String productId = "1";
+        Product product = createProduct(productId, "laptop", 1000.0);
+        when(storageService.getProductById(productId)).thenReturn(Optional.of(product));
+
+        // Act
+        basketService.addProduct(productId);
+
+        // Assert
+        verify(storageService, times(1)).getProductById(productId);
+        verify(productBasket, times(1)).addProduct(product);
+    }
+
+    @Test
+    void getUserBasket_WhenBasketIsEmpty_ShouldReturnEmptyBasket() {
+        // Arrange
+        when(productBasket.getProducts()).thenReturn(Collections.emptyList());
+
+        // Act
+        List<Product> result = basketService.getUserBasket();
+
+        // Assert
+        assertTrue(result.isEmpty());
+        verify(productBasket, times(1)).getProducts();
+    }
+
+    @Test
+    void getUserBasket_WhenBasketHasProducts_ShouldReturnCorrectBasket() {
+        // Arrange
+        List<Product> expectedProducts = Arrays.asList(
+                createProduct("1", "laptop", 1000.0),
+                createProduct("2", "mouse", 50.0)
+        );
+        when(productBasket.getProducts()).thenReturn(expectedProducts);
+
+        // Act
+        List<Product> result = basketService.getUserBasket();
+
+        // Assert
+        assertEquals(2, result.size());
+        assertEquals(expectedProducts, result);
+        verify(productBasket, times(1)).getProducts();
+    }
+
+    @Test
+    void removeProduct_WhenProductExistsInBasket_ShouldRemoveIt() {
+        // Arrange
+        String productId = "1";
+        Product product = createProduct(productId, "laptop", 1000.0);
+        when(productBasket.removeProduct(productId)).thenReturn(true);
+
+        // Act
+        boolean result = basketService.removeProduct(productId);
+
+        // Assert
+        assertTrue(result);
+        verify(productBasket, times(1)).removeProduct(productId);
+    }
+
+    @Test
+    void removeProduct_WhenProductDoesNotExistInBasket_ShouldReturnFalse() {
+        // Arrange
+        String productId = "non-existent-id";
+        when(productBasket.removeProduct(productId)).thenReturn(false);
+
+        // Act
+        boolean result = basketService.removeProduct(productId);
+
+        // Assert
+        assertFalse(result);
+        verify(productBasket, times(1)).removeProduct(productId);
+    }
+
+    @Test
+    void clearBasket_ShouldCallClearOnBasket() {
+        // Act
+        basketService.clearBasket();
+
+        // Assert
+        verify(productBasket, times(1)).clear();
+    }
+
+    @Test
+    void getTotalPrice_WhenBasketHasProducts_ShouldReturnCorrectTotal() {
+        // Arrange
+        List<Product> products = Arrays.asList(
+                createProduct("1", "laptop", 1000.0),
+                createProduct("2", "mouse", 50.0)
+        );
+        when(productBasket.getProducts()).thenReturn(products);
+        when(productBasket.getTotalPrice()).thenReturn(1050.0);
+
+        // Act
+        double totalPrice = basketService.getTotalPrice();
+
+        // Assert
+        assertEquals(1050.0, totalPrice);
+        verify(productBasket, times(1)).getTotalPrice();
+    }
+
+    @Test
+    void getTotalPrice_WhenBasketIsEmpty_ShouldReturnZero() {
+        // Arrange
+        when(productBasket.getProducts()).thenReturn(Collections.emptyList());
+        when(productBasket.getTotalPrice()).thenReturn(0.0);
+
+        // Act
+        double totalPrice = basketService.getTotalPrice();
+
+        // Assert
+        assertEquals(0.0, totalPrice);
+        verify(productBasket, times(1)).getTotalPrice();
+    }
+
+    // Вспомогательный метод для создания продуктов
+    private Product createProduct(String id, String name, double price) {
+        Product product = new Product();
+        product.setId(id);
+        product.setName(name);
+        product.setPrice(price);
+        return product;
+    }
+}
+
+// src/main/java/ru/example/service/SearchService.java
+package ru.example.service;
+
+import ru.example.model.Product;
+import ru.example.storage.StorageService;
+import java.util.List;
 import java.util.stream.Collectors;
 
-// ==================== ГЛАВНЫЙ КЛАСС ПРИЛОЖЕНИЯ ====================
-@SpringBootApplication
-public class SkyshopApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(SkyshopApplication.class, args);
-    }
-}
-
-// ==================== ИСКЛЮЧЕНИЯ И ОБРАБОТКА ОШИБОК ====================
-
-class NoSuchProductException extends RuntimeException {
-    public NoSuchProductException(String message) {
-        super(message);
-    }
-}
-
-class ShopError {
-    private final String code;
-    private final String message;
-
-    public ShopError(String code, String message) {
-        this.code = code;
-        this.message = message;
-    }
-
-    public String getCode() { return code; }
-    public String getMessage() { return message; }
-}
-
-@ControllerAdvice
-class ShopControllerAdvice {
-    @ExceptionHandler(NoSuchProductException.class)
-    public ResponseEntity<ShopError> handleNoSuchProductException(NoSuchProductException ex) {
-        ShopError error = new ShopError("PRODUCT_NOT_FOUND", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
-    }
-}
-
-// ==================== МОДЕЛИ ====================
-
-interface Searchable {
-    UUID getId();
-    String getName();
-}
-
-class Product implements Searchable {
-    private final UUID id;
-    private final String name;
-    private final double price;
-
-    public Product(UUID id, String name, double price) {
-        this.id = id;
-        this.name = name;
-        this.price = price;
-    }
-
-    @Override public UUID getId() { return id; }
-    @Override public String getName() { return name; }
-    public double getPrice() { return price; }
-
-    @Override
-    public String toString() {
-        return name + " (" + price + " руб.)";
-    }
-}
-
-class Article implements Searchable {
-    private final UUID id;
-    private final String name;
-    private final String content;
-
-    public Article(UUID id, String name, String content) {
-        this.id = id;
-        this.name = name;
-        this.content = content;
-    }
-
-    @Override public UUID getId() { return id; }
-    @Override public String getName() { return name; }
-    public String getContent() { return content; }
-
-    @Override
-    public String toString() {
-        return "Статья: " + name;
-    }
-}
-
-class SearchResult {
-    private final String id;
-    private final String name;
-    private final String contentType;
-
-    public SearchResult(String id, String name, String contentType) {
-        this.id = id;
-        this.name = name;
-        this.contentType = contentType;
-    }
-
-    public static SearchResult fromSearchable(Searchable searchable) {
-        String contentType = (searchable instanceof Product) ? "PRODUCT" : "ARTICLE";
-        return new SearchResult(
-                searchable.getId().toString(),
-                searchable.getName(),
-                contentType
-        );
-    }
-
-    public String getId() { return id; }
-    public String getName() { return name; }
-    public String getContentType() { return contentType; }
-}
-
-class BasketItem {
-    private final Product product;
-    private final int quantity;
-
-    public BasketItem(Product product, int quantity) {
-        this.product = product;
-        this.quantity = quantity;
-    }
-
-    public Product getProduct() { return product; }
-    public int getQuantity() { return quantity; }
-    public double getTotalPrice() { return product.getPrice() * quantity; }
-}
-
-class UserBasket {
-    private final List<BasketItem> items;
-    private final double total;
-
-    public UserBasket(List<BasketItem> items) {
-        this.items = Collections.unmodifiableList(new ArrayList<>(items));
-        this.total = items.stream()
-                .mapToDouble(BasketItem::getTotalPrice)
-                .sum();
-    }
-
-    public List<BasketItem> getItems() { return items; }
-    public double getTotal() { return total; }
-}
-
-// ==================== СЕРВИСЫ ====================
-
-@Service
-@Scope(value = "session", proxyMode = ScopedProxyMode.TARGET_CLASS)
-class ProductBasket {
-    private final Map<UUID, Integer> items = new HashMap<>();
-
-    public void addProduct(UUID productId) {
-        items.put(productId, items.getOrDefault(productId, 0) + 1);
-    }
-
-    public Map<UUID, Integer> getItems() {
-        return Collections.unmodifiableMap(new HashMap<>(items));
-    }
-}
-
-@Service
-class StorageService {
-    private final Map<UUID, Product> products = new HashMap<>();
-    private final Map<UUID, Article> articles = new HashMap<>();
-
-    public StorageService() {
-        initializeTestData();
-    }
-
-    private void initializeTestData() {
-        UUID smartphoneId = UUID.randomUUID();
-        UUID laptopId = UUID.randomUUID();
-        UUID headphonesId = UUID.randomUUID();
-
-        products.put(smartphoneId, new Product(smartphoneId, "Смартфон Samsung Galaxy", 50000.0));
-        products.put(laptopId, new Product(laptopId, "Ноутбук игровой ASUS", 120000.0));
-        products.put(headphonesId, new Product(headphonesId, "Наушники беспроводные Sony", 15000.0));
-
-        articles.put(UUID.randomUUID(), new Article(UUID.randomUUID(),
-                "Обзор нового смартфона Samsung", "Полный обзор..."));
-        articles.put(UUID.randomUUID(), new Article(UUID.randomUUID(),
-                "Лучшие игровые ноутбуки 2024", "Топ-10 игровых ноутбуков..."));
-    }
-
-    public Collection<Product> getAllProducts() {
-        return Collections.unmodifiableCollection(products.values());
-    }
-
-    public Collection<Article> getAllArticles() {
-        return Collections.unmodifiableCollection(articles.values());
-    }
-
-    public Collection<Searchable> getAllSearchableItems() {
-        List<Searchable> allItems = new ArrayList<>();
-        allItems.addAll(products.values());
-        allItems.addAll(articles.values());
-        return Collections.unmodifiableCollection(allItems);
-    }
-
-    public Optional<Product> getProductById(UUID id) {
-        return Optional.ofNullable(products.get(id));
-    }
-}
-
-@Service
-class SearchService {
+public class SearchService {
     private final StorageService storageService;
 
     public SearchService(StorageService storageService) {
         this.storageService = storageService;
     }
 
-    public Collection<SearchResult> search(String pattern) {
-        if (pattern == null || pattern.trim().isEmpty()) {
-            return storageService.getAllSearchableItems().stream()
-                    .map(SearchResult::fromSearchable)
-                    .collect(Collectors.toList());
+    public List<Product> search(String searchTerm) {
+        List<Product> allProducts = storageService.getAllProducts();
+
+        if (searchTerm == null || searchTerm.trim().isEmpty()) {
+            return allProducts;
         }
 
-        String lowerPattern = pattern.toLowerCase();
-
-        return storageService.getAllSearchableItems().stream()
-                .filter(item -> item.getName().toLowerCase().contains(lowerPattern))
-                .map(SearchResult::fromSearchable)
+        String lowerCaseSearchTerm = searchTerm.toLowerCase();
+        return allProducts.stream()
+                .filter(product -> product.getName().toLowerCase().contains(lowerCaseSearchTerm))
                 .collect(Collectors.toList());
     }
 }
 
-@Service
-class BasketService {
+// src/main/java/ru/example/service/BasketService.java
+package ru.example.service;
+
+import ru.example.model.Product;
+import ru.example.model.ProductBasket;
+import ru.example.storage.StorageService;
+import java.util.List;
+import java.util.Optional;
+
+public class BasketService {
     private final ProductBasket productBasket;
     private final StorageService storageService;
 
@@ -253,323 +365,169 @@ class BasketService {
         this.storageService = storageService;
     }
 
-    public void addProductToBasket(UUID productId) {
+    public void addProduct(String productId) {
         Optional<Product> product = storageService.getProductById(productId);
         if (product.isEmpty()) {
-            throw new NoSuchProductException("Продукт с ID '" + productId + "' не найден");
+            throw new IllegalArgumentException("Product with id " + productId + " not found");
         }
-        productBasket.addProduct(productId);
+        productBasket.addProduct(product.get());
     }
 
-    public UserBasket getUserBasket() {
-        Map<UUID, Integer> basketItems = productBasket.getItems();
-
-        List<BasketItem> items = basketItems.entrySet().stream()
-                .map(entry -> {
-                    UUID productId = entry.getKey();
-                    Integer quantity = entry.getValue();
-                    Product product = storageService.getProductById(productId)
-                            .orElseThrow(() -> new NoSuchProductException("Продукт с ID '" + productId + "' не найден"));
-                    return new BasketItem(product, quantity);
-                })
-                .collect(Collectors.toList());
-
-        return new UserBasket(items);
-    }
-}
-
-// ==================== КОНТРОЛЛЕР ====================
-
-@RestController
-@RequestMapping("/shop")
-class ShopController {
-    private final StorageService storageService;
-    private final SearchService searchService;
-    private final BasketService basketService;
-
-    public ShopController(StorageService storageService, SearchService searchService, BasketService basketService) {
-        this.storageService = storageService;
-        this.searchService = searchService;
-        this.basketService = basketService;
+    public boolean removeProduct(String productId) {
+        return productBasket.removeProduct(productId);
     }
 
-    @GetMapping("/products")
-    public Collection<Product> getAllProducts() {
-        return storageService.getAllProducts();
+    public List<Product> getUserBasket() {
+        return productBasket.getProducts();
     }
 
-    @GetMapping("/articles")
-    public Collection<Article> getAllArticles() {
-        return storageService.getAllArticles();
+    public void clearBasket() {
+        productBasket.clear();
     }
 
-    @GetMapping("/search")
-    public Collection<SearchResult> search(@RequestParam String pattern) {
-        return searchService.search(pattern);
-    }
-
-    @GetMapping("/basket/{id}")
-    public String addProduct(@PathVariable("id") UUID id) {
-        basketService.addProductToBasket(id);
-        return "Продукт успешно добавлен";
-    }
-
-    @GetMapping("/basket")
-    public UserBasket getUserBasket() {
-        return basketService.getUserBasket();
+    public double getTotalPrice() {
+        return productBasket.getTotalPrice();
     }
 }
 
-// ==================== ТЕСТЫ ====================
+// src/main/java/ru/example/model/Product.java
+package ru.example.model;
 
-class SearchServiceTest {
-    private StorageService storageService;
-    private SearchService searchService;
+public class Product {
+    private String id;
+    private String name;
+    private double price;
 
-    @BeforeEach
-    void setUp() {
-        storageService = Mockito.mock(StorageService.class);
-        searchService = new SearchService(storageService);
+    public Product() {}
+
+    public Product(String id, String name, double price) {
+        this.id = id;
+        this.name = name;
+        this.price = price;
     }
 
-    @Test
-    @DisplayName("Поиск при отсутствии объектов в StorageService")
-    void search_WhenNoObjectsInStorage_ShouldReturnEmptyList() {
-        // Arrange
-        Mockito.when(storageService.getAllSearchableItems()).thenReturn(Collections.emptyList());
+    // Getters and setters
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
 
-        // Act
-        Collection<SearchResult> results = searchService.search("тест");
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
 
-        // Assert
-        assert results.isEmpty() : "Должен вернуться пустой список при отсутствии объектов";
+    public double getPrice() { return price; }
+    public void setPrice(double price) { this.price = price; }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Product product = (Product) o;
+        return Double.compare(product.price, price) == 0 &&
+                id.equals(product.id) &&
+                name.equals(product.name);
     }
 
-    @Test
-    @DisplayName("Поиск когда объекты есть, но нет подходящих")
-    void search_WhenObjectsExistButNoMatches_ShouldReturnEmptyList() {
-        // Arrange
-        List<Searchable> items = Arrays.asList(
-                new Product(UUID.randomUUID(), "Ноутбук", 50000.0),
-                new Article(UUID.randomUUID(), "Обзор компьютера", "Содержание...")
-        );
-        Mockito.when(storageService.getAllSearchableItems()).thenReturn(items);
-
-        // Act
-        Collection<SearchResult> results = searchService.search("смартфон");
-
-        // Assert
-        assert results.isEmpty() : "Должен вернуться пустой список при отсутствии совпадений";
-    }
-
-    @Test
-    @DisplayName("Поиск когда есть подходящие объекты")
-    void search_WhenMatchingObjectsExist_ShouldReturnResults() {
-        // Arrange
-        UUID productId = UUID.randomUUID();
-        UUID articleId = UUID.randomUUID();
-
-        List<Searchable> items = Arrays.asList(
-                new Product(productId, "Смартфон Samsung", 50000.0),
-                new Article(articleId, "Обзор смартфона", "Содержание..."),
-                new Product(UUID.randomUUID(), "Ноутбук", 70000.0)
-        );
-        Mockito.when(storageService.getAllSearchableItems()).thenReturn(items);
-
-        // Act
-        Collection<SearchResult> results = searchService.search("смартфон");
-
-        // Assert
-        assert results.size() == 2 : "Должно вернуться 2 результата";
-
-        Set<String> resultNames = results.stream()
-                .map(SearchResult::getName)
-                .collect(Collectors.toSet());
-        assert resultNames.contains("Смартфон Samsung") : "Должен содержать продукт 'Смартфон Samsung'";
-        assert resultNames.contains("Обзор смартфона") : "Должен содержать статью 'Обзор смартфона'";
-    }
-
-    @Test
-    @DisplayName("Поиск с пустым запросом возвращает все объекты")
-    void search_WithEmptyQuery_ShouldReturnAllItems() {
-        // Arrange
-        List<Searchable> items = Arrays.asList(
-                new Product(UUID.randomUUID(), "Товар 1", 1000.0),
-                new Article(UUID.randomUUID(), "Статья 1", "Содержание...")
-        );
-        Mockito.when(storageService.getAllSearchableItems()).thenReturn(items);
-
-        // Act
-        Collection<SearchResult> results = searchService.search("");
-
-        // Assert
-        assert results.size() == 2 : "Должен вернуть все объекты при пустом запросе";
-    }
-
-    @Test
-    @DisplayName("Поиск с null запросом возвращает все объекты")
-    void search_WithNullQuery_ShouldReturnAllItems() {
-        // Arrange
-        List<Searchable> items = Arrays.asList(
-                new Product(UUID.randomUUID(), "Товар 1", 1000.0),
-                new Article(UUID.randomUUID(), "Статья 1", "Содержание...")
-        );
-        Mockito.when(storageService.getAllSearchableItems()).thenReturn(items);
-
-        // Act
-        Collection<SearchResult> results = searchService.search(null);
-
-        // Assert
-        assert results.size() == 2 : "Должен вернуть все объекты при null запросе";
-    }
-
-    @Test
-    @DisplayName("Поиск должен быть регистронезависимым")
-    void search_ShouldBeCaseInsensitive() {
-        // Arrange
-        List<Searchable> items = Arrays.asList(
-                new Product(UUID.randomUUID(), "Смартфон Samsung", 50000.0)
-        );
-        Mockito.when(storageService.getAllSearchableItems()).thenReturn(items);
-
-        // Act
-        Collection<SearchResult> results1 = searchService.search("СМАРТФОН");
-        Collection<SearchResult> results2 = searchService.search("смартфон");
-        Collection<SearchResult> results3 = searchService.search("Смартфон");
-
-        // Assert
-        assert results1.size() == 1 : "Должен находить при верхнем регистре";
-        assert results2.size() == 1 : "Должен находить при нижнем регистре";
-        assert results3.size() == 1 : "Должен находить при смешанном регистре";
+    @Override
+    public int hashCode() {
+        return java.util.Objects.hash(id, name, price);
     }
 }
 
-class BasketServiceTest {
-    private ProductBasket productBasket;
-    private StorageService storageService;
-    private BasketService basketService;
+// src/main/java/ru/example/model/ProductBasket.java
+package ru.example.model;
 
-    @BeforeEach
-    void setUp() {
-        productBasket = Mockito.mock(ProductBasket.class);
-        storageService = Mockito.mock(StorageService.class);
-        basketService = new BasketService(productBasket, storageService);
+import java.util.ArrayList;
+import java.util.List;
+
+public class ProductBasket {
+    private final List<Product> products = new ArrayList<>();
+
+    public void addProduct(Product product) {
+        products.add(product);
     }
 
-    @Test
-    @DisplayName("Добавление несуществующего товара в корзину приводит к исключению")
-    void addProductToBasket_WhenProductDoesNotExist_ShouldThrowException() {
-        // Arrange
-        UUID nonExistentProductId = UUID.randomUUID();
-        Mockito.when(storageService.getProductById(nonExistentProductId))
-                .thenReturn(Optional.empty());
-
-        // Act & Assert
-        try {
-            basketService.addProductToBasket(nonExistentProductId);
-            assert false : "Должно было быть выброшено исключение";
-        } catch (NoSuchProductException e) {
-            assert e.getMessage().contains(nonExistentProductId.toString()) :
-                    "Сообщение об ошибке должно содержать ID продукта";
-        }
+    public boolean removeProduct(String productId) {
+        return products.removeIf(product -> product.getId().equals(productId));
     }
 
-    @Test
-    @DisplayName("Добавление существующего товара вызывает метод addProduct у корзины")
-    void addProductToBasket_WhenProductExists_ShouldCallAddProduct() {
-        // Arrange
-        UUID productId = UUID.randomUUID();
-        Product product = new Product(productId, "Тестовый продукт", 1000.0);
-        Mockito.when(storageService.getProductById(productId))
-                .thenReturn(Optional.of(product));
-
-        // Act
-        basketService.addProductToBasket(productId);
-
-        // Assert
-        Mockito.verify(productBasket, Mockito.times(1)).addProduct(productId);
+    public List<Product> getProducts() {
+        return new ArrayList<>(products);
     }
 
-    @Test
-    @DisplayName("Метод getUserBasket возвращает пустую корзину, если ProductBasket пуст")
-    void getUserBasket_WhenBasketIsEmpty_ShouldReturnEmptyBasket() {
-        // Arrange
-        Mockito.when(productBasket.getItems()).thenReturn(Collections.emptyMap());
-
-        // Act
-        UserBasket userBasket = basketService.getUserBasket();
-
-        // Assert
-        assert userBasket.getItems().isEmpty() : "Корзина должна быть пустой";
-        assert userBasket.getTotal() == 0.0 : "Общая стоимость должна быть 0";
+    public void clear() {
+        products.clear();
     }
 
-    @Test
-    @DisplayName("Метод getUserBasket возвращает правильную корзину, когда в ProductBasket есть товары")
-    void getUserBasket_WhenBasketHasItems_ShouldReturnCorrectBasket() {
-        // Arrange
-        UUID productId1 = UUID.randomUUID();
-        UUID productId2 = UUID.randomUUID();
-
-        Product product1 = new Product(productId1, "Продукт 1", 1000.0);
-        Product product2 = new Product(productId2, "Продукт 2", 2000.0);
-
-        Map<UUID, Integer> basketItems = new HashMap<>();
-        basketItems.put(productId1, 2);
-        basketItems.put(productId2, 1);
-
-        Mockito.when(productBasket.getItems()).thenReturn(basketItems);
-        Mockito.when(storageService.getProductById(productId1)).thenReturn(Optional.of(product1));
-        Mockito.when(storageService.getProductById(productId2)).thenReturn(Optional.of(product2));
-
-        // Act
-        UserBasket userBasket = basketService.getUserBasket();
-
-        // Assert
-        assert userBasket.getItems().size() == 2 : "Должно быть 2 элемента в корзине";
-        assert userBasket.getTotal() == 4000.0 : "Общая стоимость должна быть 4000";
-
-        BasketItem item1 = userBasket.getItems().stream()
-                .filter(item -> item.getProduct().getId().equals(productId1))
-                .findFirst()
-                .orElse(null);
-        assert item1 != null : "Должен содержать продукт 1";
-        assert item1.getQuantity() == 2 : "Количество продукта 1 должно быть 2";
-
-        BasketItem item2 = userBasket.getItems().stream()
-                .filter(item -> item.getProduct().getId().equals(productId2))
-                .findFirst()
-                .orElse(null);
-        assert item2 != null : "Должен содержать продукт 2";
-        assert item2.getQuantity() == 1 : "Количество продукта 2 должно быть 1";
-    }
-
-    @Test
-    @DisplayName("Метод getUserBasket выбрасывает исключение, если продукт в корзине не найден в каталоге")
-    void getUserBasket_WhenProductInBasketNotFound_ShouldThrowException() {
-        // Arrange
-        UUID existingProductId = UUID.randomUUID();
-        UUID nonExistentProductId = UUID.randomUUID();
-
-        Product existingProduct = new Product(existingProductId, "Существующий продукт", 1000.0);
-
-        Map<UUID, Integer> basketItems = new HashMap<>();
-        basketItems.put(existingProductId, 1);
-        basketItems.put(nonExistentProductId, 1);
-
-        Mockito.when(productBasket.getItems()).thenReturn(basketItems);
-        Mockito.when(storageService.getProductById(existingProductId))
-                .thenReturn(Optional.of(existingProduct));
-        Mockito.when(storageService.getProductById(nonExistentProductId))
-                .thenReturn(Optional.empty());
-
-        // Act & Assert
-        try {
-            basketService.getUserBasket();
-            assert false : "Должно было быть выброшено исключение";
-        } catch (NoSuchProductException e) {
-            assert e.getMessage().contains(nonExistentProductId.toString()) :
-                    "Сообщение об ошибке должно содержать ID несуществующего продукта";
-        }
+    public double getTotalPrice() {
+        return products.stream()
+                .mapToDouble(Product::getPrice)
+                .sum();
     }
 }
+
+// src/main/java/ru/example/storage/StorageService.java
+package ru.example.storage;
+
+import ru.example.model.Product;
+import java.util.List;
+import java.util.Optional;
+
+public interface StorageService {
+    List<Product> getAllProducts();
+    Optional<Product> getProductById(String id);
+}
+
+// pom.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>ru.example</groupId>
+    <artifactId>shopping-app</artifactId>
+    <version>1.0.0</version>
+
+    <properties>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <junit.version>5.9.2</junit.version>
+        <mockito.version>5.1.1</mockito.version>
+    </properties>
+
+    <dependencies>
+        <!-- JUnit 5 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+<version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Mockito -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+<version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+<version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.0.0-M9</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>
