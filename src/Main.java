@@ -45,7 +45,6 @@ class SearchServiceTest {
 
     @Test
     void search_WhenProductsExistButNoMatch_ShouldReturnEmptyList() {
-        // Arrange
         List<Product> products = Arrays.asList(
                 createProduct("1", "phone", 500.0),
                 createProduct("2", "tablet", 300.0)
